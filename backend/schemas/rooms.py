@@ -17,6 +17,12 @@ class CreateRoomResponse(BaseModel):
     host_token: str
 
 
+class ScriptListItem(BaseModel):
+    id: str
+    name: str
+    version: str
+
+
 class JoinRoomRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=64)
     code: str

@@ -22,6 +22,7 @@ from backend.schemas.rooms import (
     NominationRequest,
     NominationTotalRequest,
     PhaseChangeRequest,
+    ScriptListItem,
     PlayerNoteRequest,
     PlayerStatusRequest,
     UpdateSeatRequest,
@@ -70,6 +71,20 @@ def create_rooms_router(
             room_code=room.code,
             host_token=host_token,
         )
+
+    @router.get("/scripts", response_model=list[ScriptListItem])
+    async def list_scripts(
+        current_user: AuthenticatedUser = Depends(require_user),
+    ) -> list[ScriptListItem]:
+        if not current_user.user.can_create_room:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="没有创建房间的权限"
+            )
+        scripts = room_service.list_scripts()
+        return [
+            ScriptListItem(id=script.id, name=script.name, version=script.version)
+            for script in scripts
+        ]
 
     @router.post("/join", response_model=JoinRoomResponse)
     async def join_room_by_code(

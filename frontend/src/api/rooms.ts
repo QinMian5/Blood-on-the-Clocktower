@@ -23,6 +23,12 @@ export interface AssignRolesResponse {
   finalized: boolean;
 }
 
+export interface RoomScriptInfo {
+  id: string;
+  name: string;
+  version: string;
+}
+
 export async function createRoom(options: { scriptId?: string; hostName?: string } = {}) {
   const payload: Record<string, unknown> = {};
   if (options.hostName) {
@@ -40,6 +46,11 @@ export async function createRoom(options: { scriptId?: string; hostName?: string
   };
   setAuthToken(data.host_token);
   return data;
+}
+
+export async function fetchScripts() {
+  const response = await apiClient.get("/rooms/scripts");
+  return response.data as RoomScriptInfo[];
 }
 
 export async function joinRoom(code: string, name?: string) {

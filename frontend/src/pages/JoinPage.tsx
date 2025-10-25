@@ -2,7 +2,8 @@ import { FormEvent, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { loginUser, logoutUser, registerUser, fetchCurrentUser } from "../api/auth";
-import { createRoom, fetchSnapshot, joinRoom } from "../api/rooms";
+import { createRoom, fetchScripts, fetchSnapshot, joinRoom } from "../api/rooms";
+import type { RoomScriptInfo } from "../api/rooms";
 import { useAuthStore } from "../store/authStore";
 import { useRoomStore } from "../store/roomStore";
 import { clearAuthToken } from "../api/client";
@@ -33,6 +34,9 @@ export function JoinPage() {
   const [joinBusy, setJoinBusy] = useState(false);
 
   const [scriptId, setScriptId] = useState("");
+  const [scriptOptions, setScriptOptions] = useState<RoomScriptInfo[]>([]);
+  const [scriptsLoading, setScriptsLoading] = useState(false);
+  const [scriptsError, setScriptsError] = useState<string | null>(null);
   const [hostDisplayName, setHostDisplayName] = useState("");
   const [createMessage, setCreateMessage] = useState<string | null>(null);
   const [createBusy, setCreateBusy] = useState(false);
@@ -43,6 +47,51 @@ export function JoinPage() {
       .catch(() => setUser(null))
       .finally(() => setAuthChecked(true));
   }, [setUser]);
+
+  useEffect(() => {
+    if (!user?.can_create_room) {
+      setScriptOptions([]);
+      setScriptId("");
+      setScriptsError(null);
+      setScriptsLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setScriptsLoading(true);
+    setScriptsError(null);
+    fetchScripts()
+      .then((list) => {
+        if (cancelled) {
+          return;
+        }
+        setScriptOptions(list);
+        setScriptId((previous) => {
+          if (previous && list.some((item) => item.id === previous)) {
+            return previous;
+          }
+          return list[0]?.id ?? "";
+        });
+      })
+      .catch((error) => {
+        console.error("fetch scripts failed", error);
+        if (cancelled) {
+          return;
+        }
+        setScriptOptions([]);
+        setScriptId("");
+        setScriptsError("剧本列表加载失败，请稍后重试。");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setScriptsLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.can_create_room]);
 
   const handleRegister = async (event: FormEvent) => {
     event.preventDefault();
@@ -113,7 +162,6 @@ export function JoinPage() {
         console.error("prefetch host snapshot failed", error);
       }
       setCreateMessage(`房间创建成功，加入码：${data.join_code}`);
-      setScriptId("");
       setHostDisplayName("");
       navigate(`/room/${data.room_id}`);
     } catch (error) {
@@ -337,16 +385,31 @@ export function JoinPage() {
                 <form onSubmit={handleCreateRoom} className="space-y-4">
                   <div>
                     <label className="mb-1 block text-sm font-medium" htmlFor="script-id">
-                      剧本 ID（可选）
+                      选择剧本
                     </label>
-                    <input
+                    <select
                       id="script-id"
-                      type="text"
                       value={scriptId}
                       onChange={(event) => setScriptId(event.target.value)}
-                      placeholder="sample_trouble"
                       className="w-full rounded border border-slate-600 bg-slate-900 px-3 py-2 focus:outline-none focus:ring focus:ring-amber-500"
-                    />
+                      disabled={scriptsLoading || scriptOptions.length === 0}
+                      required
+                    >
+                      {scriptsLoading ? (
+                        <option value="">正在加载剧本...</option>
+                      ) : scriptOptions.length > 0 ? (
+                        scriptOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.name}（v{option.version}）
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">暂无可用剧本</option>
+                      )}
+                    </select>
+                    {scriptsError && (
+                      <p className="mt-1 text-sm text-rose-300">{scriptsError}</p>
+                    )}
                   </div>
                   <div>
                     <label className="mb-1 block text-sm font-medium" htmlFor="host-display-name">
@@ -364,7 +427,11 @@ export function JoinPage() {
                   <button
                     type="submit"
                     className="w-full rounded bg-amber-500 py-2 font-semibold text-slate-900 hover:bg-amber-400 disabled:opacity-50"
-                    disabled={createBusy}
+                    disabled={
+                      createBusy ||
+                      scriptsLoading ||
+                      (scriptOptions.length > 0 && !scriptId)
+                    }
                   >
                     创建房间
                   </button>

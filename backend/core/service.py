@@ -96,6 +96,11 @@ class RoomService:
         self._rooms[room_id] = room
         return room
 
+    def list_scripts(self) -> list[Script]:
+        """返回可用剧本的列表，按名称排序方便前端展示。"""
+
+        return sorted(SCRIPTS.values(), key=lambda script: script.name)
+
     def list_rooms(self) -> Iterable[RoomState]:
         return self._rooms.values()
 
