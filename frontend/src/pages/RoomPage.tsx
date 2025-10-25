@@ -37,6 +37,12 @@ const TEAM_LABEL: Record<string, string> = {
     demon: "恶魔",
     unknown: "其他"
 };
+const TEAM_CARD_CLASSES: Record<string, string> = {
+    townsfolk: "border-sky-500/60 bg-sky-500/10",
+    outsider: "border-sky-500/60 bg-sky-500/10",
+    minion: "border-rose-500/60 bg-rose-500/10",
+    demon: "border-rose-500/60 bg-rose-500/10"
+};
 
 const LIFE_STATUS_OPTIONS: Array<{ value: LifeStatusValue; label: string }> = [
     {value: "alive", label: "存活"},
@@ -134,6 +140,10 @@ function renderRole(role?: LocalizedRoleName | null) {
 function renderTeam(team?: string) {
     if (!team) return "";
     return TEAM_LABEL[team] ?? team;
+}
+
+function computeExecutionThreshold(alivePlayers: number) {
+    return Math.floor(alivePlayers / 2) + 1;
 }
 
 function formatSeatLabel(seat: number) {
@@ -467,11 +477,25 @@ export function RoomPage() {
             }
             grouped.get(nomination.day)!.push(nomination);
         });
-        const result = new Map<number, { nominationId: string | null; tie: boolean; hasCompleted: boolean }>();
+        const aliveCounts = new Map<number, number>();
+        executions.forEach((record) => {
+            if (!aliveCounts.has(record.day)) {
+                aliveCounts.set(record.day, record.alive_count);
+            }
+        });
+        if (currentDay > 0 && !aliveCounts.has(currentDay)) {
+            aliveCounts.set(currentDay, aliveCount);
+        }
+        const result = new Map<
+            number,
+            { nominationId: string | null; tie: boolean; hasCompleted: boolean; threshold: number }
+        >();
         grouped.forEach((items, day) => {
             const completed = items.filter((item) => item.vote_completed);
+            const aliveForDay = aliveCounts.get(day) ?? aliveCount;
+            const threshold = computeExecutionThreshold(aliveForDay);
             if (completed.length === 0) {
-                result.set(day, { nominationId: null, tie: false, hasCompleted: false });
+                result.set(day, { nominationId: null, tie: false, hasCompleted: false, threshold });
                 return;
             }
             let bestNominationId: string | null = null;
@@ -479,6 +503,9 @@ export function RoomPage() {
             let tie = false;
             completed.forEach((item) => {
                 const total = resolveNominationTotal(item);
+                if (total < threshold) {
+                    return;
+                }
                 if (bestNominationId === null || total > bestTotal) {
                     bestNominationId = item.id;
                     bestTotal = total;
@@ -487,14 +514,29 @@ export function RoomPage() {
                     tie = true;
                 }
             });
-            if (bestNominationId !== null && !tie) {
-                result.set(day, { nominationId: bestNominationId, tie: false, hasCompleted: true });
+            if (bestNominationId === null) {
+                result.set(day, { nominationId: null, tie: false, hasCompleted: true, threshold });
+            } else if (tie) {
+                result.set(day, { nominationId: null, tie: true, hasCompleted: true, threshold });
             } else {
-                result.set(day, { nominationId: null, tie: tie || completed.length > 1, hasCompleted: true });
+                result.set(day, { nominationId: bestNominationId, tie: false, hasCompleted: true, threshold });
             }
         });
         return result;
-    }, [nominations, resolveNominationTotal]);
+    }, [
+        nominations,
+        resolveNominationTotal,
+        executions,
+        currentDay,
+        aliveCount
+    ]);
+    const todaysExecutionThreshold = useMemo(() => {
+        const info = executionBlockByDay.get(currentDay);
+        if (info) {
+            return info.threshold;
+        }
+        return computeExecutionThreshold(aliveCount);
+    }, [executionBlockByDay, currentDay, aliveCount]);
     const activeNomination = useMemo(() => {
         if (!voteSession) {
             return null;
@@ -1593,6 +1635,7 @@ export function RoomPage() {
                         </div>
                         <div className="mt-4 space-y-3 text-xs text-slate-300">
                             <p>当前存活玩家数：{aliveCount}</p>
+                            <p>处决门槛：{todaysExecutionThreshold}</p>
                             {selectedExecutionNomination ? (
                                 <div className="rounded border border-slate-700/60 bg-slate-900/40 p-3">
                                     <p className="text-slate-200">
@@ -1707,15 +1750,17 @@ export function RoomPage() {
                                                         let onBlock = false;
                                                         if (!isVoteCompleted) {
                                                             blockLabel = "投票未结束";
-                                                        } else if (blockInfo?.tie) {
+                                                        } else if (!blockInfo || !blockInfo.hasCompleted) {
                                                             blockLabel = "无人上处决台";
-                                                        } else if (blockInfo?.nominationId === nomination.id) {
+                                                        } else if (blockInfo.nominationId === null) {
+                                                            blockLabel = blockInfo.tie
+                                                                ? "票数相同，无人上处决台"
+                                                                : "无人上处决台";
+                                                        } else if (blockInfo.nominationId === nomination.id) {
                                                             blockLabel = "在处决台";
                                                             onBlock = true;
-                                                        } else if (blockInfo?.hasCompleted) {
-                                                            blockLabel = "未在处决台";
                                                         } else {
-                                                            blockLabel = "无人上处决台";
+                                                            blockLabel = "未在处决台";
                                                         }
                                                         return (
                                                             <tr key={nomination.id}>
@@ -2182,22 +2227,28 @@ export function RoomPage() {
                                         className="col-span-full border-t border-slate-700 pt-3 text-sm font-semibold text-slate-200">
                                         {renderTeam(section.team) || section.team}
                                     </div>
-                                    {section.roles.map((role) => (
-                                        <div key={role.id}
-                                             className="rounded border border-slate-700 bg-slate-900/60 p-4">
-                                            <h3 className="text-base font-semibold">
-                                                {renderRole({
-                                                    id: role.id,
-                                                    name: role.name,
-                                                    name_localized: role.name_localized,
-                                                    team: role.team,
-                                                    team_label: role.team_label
-                                                })}
-                                            </h3>
-                                            <p className="text-xs text-slate-400">阵营：{renderTeam(role.team)}</p>
-                                            <p className="mt-2 text-sm text-slate-300">{role.description ?? "暂无介绍"}</p>
-                                        </div>
-                                    ))}
+                                    {section.roles.map((role) => {
+                                        const cardTone = TEAM_CARD_CLASSES[role.team ?? ""] ??
+                                            "border-slate-700 bg-slate-900/60";
+                                        return (
+                                            <div
+                                                key={role.id}
+                                                className={`rounded border p-4 ${cardTone}`}
+                                            >
+                                                <h3 className="text-base font-semibold">
+                                                    {renderRole({
+                                                        id: role.id,
+                                                        name: role.name,
+                                                        name_localized: role.name_localized,
+                                                        team: role.team,
+                                                        team_label: role.team_label
+                                                    })}
+                                                </h3>
+                                                <p className="text-xs text-slate-400">阵营：{renderTeam(role.team)}</p>
+                                                <p className="mt-2 text-sm text-slate-300">{role.description ?? "暂无介绍"}</p>
+                                            </div>
+                                        );
+                                    })}
                                 </Fragment>
                             ))}
                             {!roleSections.length && (
