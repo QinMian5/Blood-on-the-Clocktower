@@ -178,7 +178,12 @@ export function JoinPage() {
     setJoinMessage(null);
     try {
       const response = await joinRoom(joinCode.trim(), playerAlias.trim() || undefined);
-      connect({ roomId: response.room_id, token: response.player_token, seat: response.seat });
+      connect({
+        roomId: response.room_id,
+        token: response.player_token,
+        seat: response.seat,
+        playerId: response.player_id
+      });
       try {
         const snapshot = await fetchSnapshot(response.room_id);
         setRoomSnapshot(snapshot);

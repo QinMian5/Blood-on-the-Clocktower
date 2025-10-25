@@ -168,6 +168,22 @@ def create_rooms_router(
         await ws_manager.broadcast_state(room_id)
         return {"seat": player.seat}
 
+    @router.delete("/{room_id}/players/{player_id}")
+    async def remove_player(
+        room_id: str,
+        player_id: str,
+        principal: RoomPrincipal = Depends(principal_dep),
+    ) -> dict:
+        ensure_same_room(room_id, principal)
+        if not principal.is_host and principal.player_id != player_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="无法移除其他玩家")
+        try:
+            room_service.remove_player(room_id, player_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        await ws_manager.broadcast_state(room_id)
+        return {"status": "ok"}
+
     @router.get("/{room_id}/state")
     async def get_state(room_id: str, principal: RoomPrincipal = Depends(principal_dep)) -> dict:
         ensure_same_room(room_id, principal)

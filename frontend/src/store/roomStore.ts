@@ -5,7 +5,7 @@ import type { RoomCredentials, RoomSnapshot } from "../api/types";
 function deriveStateFromSnapshot(snapshot: RoomSnapshot, state: RoomState) {
   const me = snapshot.players.find((player) => player.me);
   if (me && state.credentials) {
-    return { snapshot, credentials: { ...state.credentials, seat: me.seat } };
+    return { snapshot, credentials: { ...state.credentials, seat: me.seat, playerId: me.id } };
   }
   return { snapshot };
 }
@@ -67,7 +67,7 @@ export const useRoomStore = create<RoomState>((set) => ({
       socket.close();
       socket = null;
     }
-    set({ status: "disconnected", credentials: null });
+    set({ status: "disconnected", credentials: null, snapshot: null });
   },
   setSnapshot: (snapshot: RoomSnapshot) => set((state) => deriveStateFromSnapshot(snapshot, state)),
   setError: (message: string | null) => set({ lastError: message })

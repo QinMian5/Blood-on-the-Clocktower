@@ -78,6 +78,11 @@ export async function updateSeat(roomId: string, seat: number, options: { player
   return response.data as { seat: number };
 }
 
+export async function removeRoomPlayer(roomId: string, playerId: string) {
+  const response = await apiClient.delete(`/rooms/${roomId}/players/${playerId}`);
+  return response.data as { status: string };
+}
+
 export async function fetchSnapshot(roomId: string) {
   const response = await apiClient.get(`/rooms/${roomId}/state`);
   return response.data as RoomSnapshot;

@@ -8,6 +8,7 @@ import {
     fetchSnapshot,
     nominate,
     recordExecution,
+    removeRoomPlayer,
     resetRoom,
     sendVote,
     setGameResult,
@@ -27,6 +28,7 @@ import type {
     RoomPlayer,
     ScriptRoleInfo
 } from "../api/types";
+import {clearAuthToken} from "../api/client";
 import {useRoomStore} from "../store/roomStore";
 
 const ROLE_TEAM_ORDER = ["townsfolk", "outsider", "minion", "demon"];
@@ -188,6 +190,7 @@ export function RoomPage() {
     const status = useRoomStore((state) => state.status);
     const credentials = useRoomStore((state) => state.credentials);
     const lastError = useRoomStore((state) => state.lastError);
+    const disconnectRoom = useRoomStore((state) => state.disconnect);
 
     const [hostMessage, setHostMessage] = useState<string | null>(null);
     const [hostMessageType, setHostMessageType] = useState<"info" | "error" | null>(null);
@@ -224,6 +227,7 @@ export function RoomPage() {
     const [statusUpdating, setStatusUpdating] = useState<Record<string, boolean>>({});
     const [playerNoteDrafts, setPlayerNoteDrafts] = useState<Record<string, string>>({});
     const [playerNoteSaving, setPlayerNoteSaving] = useState<Record<string, boolean>>({});
+    const [removingPlayers, setRemovingPlayers] = useState<Record<string, boolean>>({});
     const [nomineeSeatInput, setNomineeSeatInput] = useState<string>("");
     const [nominatorSeatInput, setNominatorSeatInput] = useState<string>("");
     const [voteSubmitting, setVoteSubmitting] = useState(false);
@@ -257,6 +261,7 @@ export function RoomPage() {
 
     const players: RoomPlayer[] = snapshot?.players ?? [];
     const me = players.find((player) => player.me);
+    const myPlayerId = me?.id ?? null;
     const activePlayers = players.filter((player) => player.seat > 0);
     const playerCount = activePlayers.length;
     const playersById = useMemo(() => {
@@ -642,6 +647,37 @@ export function RoomPage() {
             }
         },
         [snapshot]
+    );
+
+    const handleRemovePlayer = useCallback(
+        async (player: RoomPlayer) => {
+            if (!roomId || player.is_host) {
+                return;
+            }
+            setRemovingPlayers((state) => ({...state, [player.id]: true}));
+            setHostMessage(null);
+            setHostMessageType(null);
+            try {
+                await removeRoomPlayer(roomId, player.id);
+                setHostMessageType("info");
+                setHostMessage(`已将 ${player.name} 移出房间。`);
+            } catch (error: unknown) {
+                console.error("remove player failed", error);
+                if (isAxiosError(error)) {
+                    setHostMessage(error.response?.data?.detail ?? "移除失败");
+                } else {
+                    setHostMessage("移除失败");
+                }
+                setHostMessageType("error");
+            } finally {
+                setRemovingPlayers((state) => {
+                    const next = {...state};
+                    delete next[player.id];
+                    return next;
+                });
+            }
+        },
+        [roomId]
     );
 
     const handlePlayerNoteDraftChange = useCallback(
@@ -1227,6 +1263,25 @@ export function RoomPage() {
         [roomId]
     );
 
+    const handleExitRoom = useCallback(async () => {
+        if (!roomId) {
+            navigate("/");
+            return;
+        }
+        if (!isHost) {
+            if (myPlayerId) {
+                try {
+                    await removeRoomPlayer(roomId, myPlayerId);
+                } catch (error) {
+                    console.error("leave room failed", error);
+                }
+            }
+            clearAuthToken();
+        }
+        disconnectRoom();
+        navigate("/");
+    }, [roomId, isHost, myPlayerId, disconnectRoom, navigate]);
+
     if (!roomId) {
         return null;
     }
@@ -1280,9 +1335,18 @@ export function RoomPage() {
                             </p>
                         )}
                     </div>
-                    <div className="text-sm text-slate-300">
-                        状态：{status}
-                        {lastError && <span className="ml-2 text-rose-400">{lastError}</span>}
+                    <div className="flex items-center gap-3 text-sm text-slate-300">
+                        <span>
+                            状态：{status}
+                            {lastError && <span className="ml-2 text-rose-400">{lastError}</span>}
+                        </span>
+                        <button
+                            type="button"
+                            className="rounded border border-slate-600 px-3 py-1 text-xs text-slate-200 hover:border-rose-400"
+                            onClick={() => void handleExitRoom()}
+                        >
+                            退出房间
+                        </button>
                     </div>
                 </div>
             </header>
@@ -1920,6 +1984,7 @@ export function RoomPage() {
                                         <th className="px-4 py-2 text-left">状态</th>
                                         {isHost && <th className="w-52 px-4 py-2 text-left">角色</th>}
                                         {isHost && <th className="px-4 py-2 text-left">备注</th>}
+                                        {isHost && <th className="px-4 py-2 text-left">操作</th>}
                                     </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-800">
@@ -2217,6 +2282,22 @@ export function RoomPage() {
                                                                   <span className="text-xs text-slate-400">保存中...</span>
                                                               )}
                                                           </div>
+                                                      </td>
+                                                  )}
+                                                  {isHost && (
+                                                      <td className="px-4 py-2 align-top">
+                                                          {player.is_host ? (
+                                                              <span className="text-xs text-slate-400">-</span>
+                                                          ) : (
+                                                              <button
+                                                                  type="button"
+                                                                  className="rounded border border-rose-500 px-3 py-1 text-xs text-rose-200 hover:bg-rose-500/10 disabled:opacity-50"
+                                                                  onClick={() => void handleRemovePlayer(player)}
+                                                                  disabled={Boolean(removingPlayers[player.id])}
+                                                              >
+                                                                  {removingPlayers[player.id] ? "移除中..." : "移除"}
+                                                              </button>
+                                                          )}
                                                       </td>
                                                   )}
                                               </tr>

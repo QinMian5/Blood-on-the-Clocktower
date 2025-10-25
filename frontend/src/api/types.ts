@@ -133,4 +133,5 @@ export interface RoomCredentials {
   roomId: string;
   token: string;
   seat?: number | null;
+  playerId?: string | null;
 }
