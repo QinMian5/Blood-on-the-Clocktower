@@ -173,13 +173,29 @@ export async function updatePlayerStatus(
 
 export async function recordExecution(
   roomId: string,
-  options: { nominationId?: string | null; executedSeat?: number | null }
+  options: { nominationId?: string | null; executedSeat?: number | null; targetDead?: boolean | null }
 ) {
-  const response = await apiClient.post(`/rooms/${roomId}/execution`, {
+  const payload: Record<string, unknown> = {
     nomination_id: options.nominationId ?? null,
     executed_seat: options.executedSeat ?? null
+  };
+  if (options.targetDead !== undefined) {
+    payload.target_dead = options.targetDead;
+  }
+  const response = await apiClient.post(`/rooms/${roomId}/execution`, payload);
+  return response.data as {
+    day: number;
+    nomination_id: string | null;
+    executed: number | null;
+    target_dead: boolean | null;
+  };
+}
+
+export async function updatePlayerNote(roomId: string, playerId: string, note: string) {
+  const response = await apiClient.post(`/rooms/${roomId}/players/${playerId}/note`, {
+    note
   });
-  return response.data as { day: number; nomination_id: string | null; executed: number | null };
+  return response.data as { note: string };
 }
 
 export async function sendNightAction(

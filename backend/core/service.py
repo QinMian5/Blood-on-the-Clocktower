@@ -386,6 +386,24 @@ class RoomService:
         )
         return player
 
+    def set_player_note(self, room_id: str, player_id: str, note: str) -> PlayerState:
+        room = self.get_room(room_id)
+        try:
+            player = room.players[player_id]
+        except KeyError as exc:
+            raise ValueError("找不到玩家") from exc
+        player.note = note
+        room.logs.append(
+            LogEntry(
+                id=uuid.uuid4().hex,
+                room_id=room_id,
+                ts=datetime.now(),
+                kind="player_note_updated",
+                payload={"player": player.name, "note": note},
+            )
+        )
+        return player
+
     def add_nomination(self, room_id: str, nominee_seat: int, nominator_seat: int) -> NominationRecord:
         room = self.get_room(room_id)
         current_day_nominations = [n for n in room.nominations if n.day == room.day]
@@ -949,6 +967,8 @@ class RoomService:
         room_id: str,
         nomination_id: str | None,
         executed_seat: int | None,
+        *,
+        target_dead: bool | None = None,
     ) -> ExecutionRecord:
         room = self.get_room(room_id)
         nomination = None
@@ -971,6 +991,7 @@ class RoomService:
             votes_for=votes_for,
             alive_count=alive_count,
             nomination_id=nomination_id,
+            target_dead=target_dead,
         )
         room.executions = [rec for rec in room.executions if rec.day != room.day]
         room.executions.append(record)
@@ -985,6 +1006,7 @@ class RoomService:
                     "executed": executed_seat,
                     "votes_for": votes_for,
                     "alive_count": alive_count,
+                    "target_dead": target_dead,
                 },
             )
         )
@@ -1031,6 +1053,8 @@ def build_snapshot(room: RoomState, principal: RoomPrincipal) -> dict[str, Any]:
         }
         entry["visible_status"] = _visible_status(player, principal, me_player)
         entry["ghost_vote_available"] = not player.ghost_vote_used
+        if principal.is_host:
+            entry["note"] = player.note
         attachments_payload: list[dict[str, Any]] = []
         base_role = role_catalog.get(player.role_id)
         if player.role_attachments:
@@ -1144,6 +1168,7 @@ def build_snapshot(room: RoomState, principal: RoomPrincipal) -> dict[str, Any]:
                 "votes_for": record.votes_for,
                 "alive_count": record.alive_count,
                 "nomination_id": record.nomination_id,
+                "target_dead": record.target_dead,
                 "ts": record.ts.isoformat(),
             }
             for record in sorted(room.executions, key=lambda item: item.day)

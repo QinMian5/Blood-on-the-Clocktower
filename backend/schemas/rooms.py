@@ -89,9 +89,20 @@ class PlayerStatusRequest(BaseModel):
     )
 
 
+class PlayerNoteRequest(BaseModel):
+    note: str = Field(
+        "",
+        max_length=512,
+        description="主持人记录玩家备注的文本，建议控制在 512 个字符内",
+    )
+
+
 class ExecutionRequest(BaseModel):
     nomination_id: str | None = Field(None, description="对应的提名 ID，可为空表示无人被处决")
     executed_seat: int | None = Field(None, ge=0, description="被处决的座位号，0 或 None 表示无人处决")
+    target_dead: bool | None = Field(
+        None, description="标记被处决的目标是否死亡，None 表示未记录"
+    )
 
 
 class ActionRequest(BaseModel):

@@ -22,6 +22,7 @@ from backend.schemas.rooms import (
     NominationRequest,
     NominationTotalRequest,
     PhaseChangeRequest,
+    PlayerNoteRequest,
     PlayerStatusRequest,
     UpdateSeatRequest,
     VoteRequest,
@@ -346,6 +347,22 @@ def create_rooms_router(
         await ws_manager.broadcast_state(room_id)
         return {"status": player.life_status.value}
 
+    @router.post("/{room_id}/players/{player_id}/note")
+    async def update_player_note(
+        room_id: str,
+        player_id: str,
+        payload: PlayerNoteRequest,
+        principal: RoomPrincipal = Depends(principal_dep),
+    ) -> dict:
+        ensure_same_room(room_id, principal)
+        ensure_host(principal)
+        try:
+            player = room_service.set_player_note(room_id, player_id, payload.note)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        await ws_manager.broadcast_state(room_id)
+        return {"note": player.note}
+
     @router.post("/{room_id}/execution")
     async def record_execution(
         room_id: str,
@@ -356,7 +373,10 @@ def create_rooms_router(
         ensure_host(principal)
         try:
             record = room_service.set_execution_result(
-                room_id, payload.nomination_id, payload.executed_seat
+                room_id,
+                payload.nomination_id,
+                payload.executed_seat,
+                target_dead=payload.target_dead,
             )
         except ValueError as exc:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -365,6 +385,7 @@ def create_rooms_router(
             "day": record.day,
             "nomination_id": record.nomination_id,
             "executed": record.executed_seat,
+            "target_dead": record.target_dead,
         }
 
     @router.post("/{room_id}/action")

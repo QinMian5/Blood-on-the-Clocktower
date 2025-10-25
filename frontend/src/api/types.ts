@@ -44,6 +44,7 @@ export interface RoomPlayer {
   // 后端会在主持人或本人视角下返回角色的中英文名称。
   role_secret?: LocalizedRoleName | null;
   role_attachments?: Array<RoleAttachmentView>;
+  note?: string;
 }
 
 export interface RoomNomination {
@@ -124,6 +125,7 @@ export interface ExecutionRecordView {
   votes_for: number;
   alive_count: number;
   nomination_id?: string | null;
+  target_dead?: boolean | null;
   ts: string;
 }
 

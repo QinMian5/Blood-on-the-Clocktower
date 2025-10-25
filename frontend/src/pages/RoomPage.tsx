@@ -15,7 +15,8 @@ import {
     updateNominationTotal,
     updatePlayerStatus,
     updateSeat,
-    revertNomination
+    revertNomination,
+    updatePlayerNote
 } from "../api/rooms";
 import type {
     LocalizedRoleName,
@@ -194,6 +195,8 @@ export function RoomPage() {
     const [resetDialogOpen, setResetDialogOpen] = useState(false);
     const [gameEndDialogOpen, setGameEndDialogOpen] = useState(false);
     const [statusUpdating, setStatusUpdating] = useState<Record<string, boolean>>({});
+    const [playerNoteDrafts, setPlayerNoteDrafts] = useState<Record<string, string>>({});
+    const [playerNoteSaving, setPlayerNoteSaving] = useState<Record<string, boolean>>({});
     const [nomineeSeatInput, setNomineeSeatInput] = useState<string>("");
     const [nominatorSeatInput, setNominatorSeatInput] = useState<string>("");
     const [voteSubmitting, setVoteSubmitting] = useState(false);
@@ -429,14 +432,69 @@ export function RoomPage() {
         });
         setManualTotalDrafts(next);
     }, [nominations]);
+    useEffect(() => {
+        const drafts: Record<string, string> = {};
+        players.forEach((player) => {
+            drafts[player.id] = player.note ?? "";
+        });
+        setPlayerNoteDrafts(drafts);
+    }, [players]);
     const selectedExecutionNomination = useMemo(
         () => todaysNominations.find((item) => item.id === executionNominationId) ?? null,
         [todaysNominations, executionNominationId]
     );
+    const hasExecutionTarget = useMemo(() => {
+        if (executionSeat === "") {
+            return false;
+        }
+        const parsed = Number.parseInt(executionSeat, 10);
+        return !Number.isNaN(parsed) && parsed >= 0;
+    }, [executionSeat]);
     const aliveCount = useMemo(
         () => players.filter((player) => !player.is_host && player.life_status === "alive").length,
         [players]
     );
+    const resolveNominationTotal = useCallback(
+        (nomination: RoomNomination) =>
+            nomination.manual_total ?? nomination.votes.filter((vote) => vote.value).length,
+        []
+    );
+    const executionBlockByDay = useMemo(() => {
+        const grouped = new Map<number, RoomNomination[]>();
+        nominations.forEach((nomination) => {
+            if (!grouped.has(nomination.day)) {
+                grouped.set(nomination.day, []);
+            }
+            grouped.get(nomination.day)!.push(nomination);
+        });
+        const result = new Map<number, { nominationId: string | null; tie: boolean; hasCompleted: boolean }>();
+        grouped.forEach((items, day) => {
+            const completed = items.filter((item) => item.vote_completed);
+            if (completed.length === 0) {
+                result.set(day, { nominationId: null, tie: false, hasCompleted: false });
+                return;
+            }
+            let bestNominationId: string | null = null;
+            let bestTotal = Number.NEGATIVE_INFINITY;
+            let tie = false;
+            completed.forEach((item) => {
+                const total = resolveNominationTotal(item);
+                if (bestNominationId === null || total > bestTotal) {
+                    bestNominationId = item.id;
+                    bestTotal = total;
+                    tie = false;
+                } else if (total === bestTotal) {
+                    tie = true;
+                }
+            });
+            if (bestNominationId !== null && !tie) {
+                result.set(day, { nominationId: bestNominationId, tie: false, hasCompleted: true });
+            } else {
+                result.set(day, { nominationId: null, tie: tie || completed.length > 1, hasCompleted: true });
+            }
+        });
+        return result;
+    }, [nominations, resolveNominationTotal]);
     const activeNomination = useMemo(() => {
         if (!voteSession) {
             return null;
@@ -519,6 +577,42 @@ export function RoomPage() {
             }
         },
         [snapshot]
+    );
+
+    const handlePlayerNoteDraftChange = useCallback((playerId: string, value: string) => {
+        setPlayerNoteDrafts((drafts) => ({...drafts, [playerId]: value}));
+    }, []);
+
+    const handlePlayerNoteCommit = useCallback(
+        async (player: RoomPlayer) => {
+            if (!snapshot) {
+                return;
+            }
+            const draft = playerNoteDrafts[player.id] ?? "";
+            const current = playersById.get(player.id)?.note ?? "";
+            if (draft === current) {
+                return;
+            }
+            setPlayerNoteSaving((state) => ({...state, [player.id]: true}));
+            setHostMessage(null);
+            setHostMessageType(null);
+            try {
+                await updatePlayerNote(snapshot.room.id, player.id, draft);
+                setHostMessageType("info");
+                setHostMessage(`已更新 ${player.name} 的备注。`);
+            } catch (error) {
+                console.error("update note failed", error);
+                setHostMessageType("error");
+                setHostMessage("更新备注失败，请稍后重试。");
+            } finally {
+                setPlayerNoteSaving((state) => {
+                    const next = {...state};
+                    delete next[player.id];
+                    return next;
+                });
+            }
+        },
+        [snapshot, playerNoteDrafts, playersById]
     );
 
     const handleNominationSubmit = useCallback(async () => {
@@ -690,36 +784,49 @@ export function RoomPage() {
         [snapshot, voteSession, isHost, me]
     );
 
-    const handleExecutionSubmit = useCallback(async () => {
-        if (!snapshot) {
-            return;
-        }
-        const executedSeatValue = executionSeat ? Number.parseInt(executionSeat, 10) : null;
-        if (executionSeat && (executedSeatValue === null || Number.isNaN(executedSeatValue) || executedSeatValue < 0)) {
-            setHostMessageType("error");
-            setHostMessage("请选择有效的处决座位号。");
-            return;
-        }
-        setExecutionSubmitting(true);
-        setHostMessage(null);
-        setHostMessageType(null);
-        try {
-            await recordExecution(snapshot.room.id, {
-                nominationId: executionNominationId || null,
-                executedSeat: executedSeatValue
-            });
-            setHostMessageType("info");
-            setHostMessage("处决结果已记录。");
-        } catch (error) {
-            console.error("execution record failed", error);
-            setHostMessageType("error");
-            setHostMessage(
-                isAxiosError(error) ? error.response?.data?.detail ?? "记录处决失败" : "记录处决失败"
-            );
-        } finally {
-            setExecutionSubmitting(false);
-        }
-    }, [snapshot, executionSeat, executionNominationId]);
+    const handleExecutionSubmit = useCallback(
+        async (options?: {targetDead?: boolean | null}) => {
+            if (!snapshot) {
+                return;
+            }
+            const executedSeatValue = executionSeat ? Number.parseInt(executionSeat, 10) : null;
+            if (
+                executionSeat &&
+                (executedSeatValue === null || Number.isNaN(executedSeatValue) || executedSeatValue < 0)
+            ) {
+                setHostMessageType("error");
+                setHostMessage("请选择有效的处决座位号。");
+                return;
+            }
+            setExecutionSubmitting(true);
+            setHostMessage(null);
+            setHostMessageType(null);
+            try {
+                await recordExecution(snapshot.room.id, {
+                    nominationId: executionNominationId || null,
+                    executedSeat: executedSeatValue,
+                    targetDead: options?.targetDead
+                });
+                let extraMessage = "";
+                if (options?.targetDead === true) {
+                    extraMessage = "（目标标记为死亡）";
+                } else if (options?.targetDead === false) {
+                    extraMessage = "（目标标记为存活）";
+                }
+                setHostMessageType("info");
+                setHostMessage(`处决结果已记录${extraMessage}。`);
+            } catch (error) {
+                console.error("execution record failed", error);
+                setHostMessageType("error");
+                setHostMessage(
+                    isAxiosError(error) ? error.response?.data?.detail ?? "记录处决失败" : "记录处决失败"
+                );
+            } finally {
+                setExecutionSubmitting(false);
+            }
+        },
+        [snapshot, executionSeat, executionNominationId]
+    );
 
     const roleUsage = useMemo(() => {
         const counts = new Map<string, number>();
@@ -1462,6 +1569,27 @@ export function RoomPage() {
                                     记录处决
                                 </button>
                             </div>
+                            <div className="mt-3 space-y-2 text-xs text-slate-400">
+                                <p>点击前请先修改玩家状态。</p>
+                                <div className="flex flex-wrap gap-2 text-sm">
+                                    <button
+                                        type="button"
+                                        className="rounded border border-rose-500 px-3 py-1 text-rose-200 hover:bg-rose-500/10 disabled:opacity-50"
+                                        onClick={() => void handleExecutionSubmit({targetDead: true})}
+                                        disabled={executionSubmitting || !hasExecutionTarget}
+                                    >
+                                        目标玩家死亡
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="rounded border border-sky-500 px-3 py-1 text-sky-200 hover:bg-sky-500/10 disabled:opacity-50"
+                                        onClick={() => void handleExecutionSubmit({targetDead: false})}
+                                        disabled={executionSubmitting || !hasExecutionTarget}
+                                    >
+                                        目标玩家未死亡
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                         <div className="mt-4 space-y-3 text-xs text-slate-300">
                             <p>当前存活玩家数：{aliveCount}</p>
@@ -1559,7 +1687,9 @@ export function RoomPage() {
                                                                 </th>
                                                             );
                                                         })}
-                                                        <th className="px-3 py-2 text-center">总票数</th>
+                                                        <th className="px-3 py-2 text-center">
+                                                            {isHost ? "总票数" : "处决台"}
+                                                        </th>
                                                     </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-slate-800 text-slate-200">
@@ -1571,6 +1701,22 @@ export function RoomPage() {
                                                                 ? "投票进行中"
                                                                 : "等待投票";
                                                         const draftValue = manualTotalDrafts[nomination.id] ?? String(nomination.manual_total ?? yesVotes);
+                                                        const blockInfo = executionBlockByDay.get(day);
+                                                        const isVoteCompleted = nomination.vote_completed;
+                                                        let blockLabel = "";
+                                                        let onBlock = false;
+                                                        if (!isVoteCompleted) {
+                                                            blockLabel = "投票未结束";
+                                                        } else if (blockInfo?.tie) {
+                                                            blockLabel = "无人上处决台";
+                                                        } else if (blockInfo?.nominationId === nomination.id) {
+                                                            blockLabel = "在处决台";
+                                                            onBlock = true;
+                                                        } else if (blockInfo?.hasCompleted) {
+                                                            blockLabel = "未在处决台";
+                                                        } else {
+                                                            blockLabel = "无人上处决台";
+                                                        }
                                                         return (
                                                             <tr key={nomination.id}>
                                                                 <td className="px-3 py-3 align-top">
@@ -1608,24 +1754,37 @@ export function RoomPage() {
                                                                 })}
                                                                 <td className="px-3 py-2 text-center align-middle text-slate-200">
                                                                     {isHost ? (
-                                                                        <input
-                                                                            type="number"
-                                                                            className="w-20 rounded border border-slate-600 bg-slate-900 px-2 py-1 text-center text-sm focus:outline-none focus:ring focus:ring-emerald-500"
-                                                                            value={draftValue}
-                                                                            onChange={(event) =>
-                                                                                handleManualTotalInputChange(nomination.id, event.target.value)
-                                                                            }
-                                                                            onBlur={() => void handleManualTotalCommit(nomination.id)}
-                                                                            onKeyDown={(event) => {
-                                                                                if (event.key === "Enter") {
-                                                                                    event.preventDefault();
-                                                                                    void handleManualTotalCommit(nomination.id);
+                                                                        <div className="flex flex-col items-center gap-1">
+                                                                            <input
+                                                                                type="number"
+                                                                                className="w-20 rounded border border-slate-600 bg-slate-900 px-2 py-1 text-center text-sm focus:outline-none focus:ring focus:ring-emerald-500"
+                                                                                value={draftValue}
+                                                                                onChange={(event) =>
+                                                                                    handleManualTotalInputChange(nomination.id, event.target.value)
                                                                                 }
-                                                                            }}
-                                                                            disabled={manualTotalSaving[nomination.id]}
-                                                                        />
+                                                                                onBlur={() => void handleManualTotalCommit(nomination.id)}
+                                                                                onKeyDown={(event) => {
+                                                                                    if (event.key === "Enter") {
+                                                                                        event.preventDefault();
+                                                                                        void handleManualTotalCommit(nomination.id);
+                                                                                    }
+                                                                                }}
+                                                                                disabled={manualTotalSaving[nomination.id]}
+                                                                            />
+                                                                            <span className={`text-[11px] ${
+                                                                                onBlock ? "text-emerald-300" : "text-slate-400"
+                                                                            }`}>
+                                                                                {blockLabel}
+                                                                            </span>
+                                                                        </div>
                                                                     ) : (
-                                                                        <span>{nomination.manual_total ?? yesVotes}</span>
+                                                                        <span
+                                                                            className={onBlock
+                                                                                ? "font-semibold text-emerald-300"
+                                                                                : "text-slate-200"}
+                                                                        >
+                                                                            {blockLabel}
+                                                                        </span>
                                                                     )}
                                                                 </td>
                                                             </tr>
@@ -1644,6 +1803,12 @@ export function RoomPage() {
                                                             : `${execution.executed} 号`
                                                         : "无人处决"}
                                                     ，存活 {execution.alive_count}
+                                                    {execution.target_dead !== undefined && execution.target_dead !== null && (
+                                                        <>
+                                                            {" · "}
+                                                            {execution.target_dead ? "目标死亡" : "目标存活"}
+                                                        </>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -1678,6 +1843,7 @@ export function RoomPage() {
                                         <th className="px-4 py-2 text-left">姓名</th>
                                         <th className="px-4 py-2 text-left">状态</th>
                                         {isHost && <th className="px-4 py-2 text-left">角色</th>}
+                                        {isHost && <th className="px-4 py-2 text-left">备注</th>}
                                     </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-800">
@@ -1795,15 +1961,15 @@ export function RoomPage() {
                                                         )}
                                                     </div>
                                                 </td>
-                                                {isHost && (
-                                                    <td className="px-4 py-2 align-top">
-                                                        {player.is_host ? (
-                                                            <div className="flex flex-wrap gap-2">
-                                                                {pendingTeamCountsLabel && (
-                                                                    <p className="w-full text-xs text-slate-400">
-                                                                        预分配阵营：{pendingTeamCountsLabel}
-                                                                    </p>
-                                                                )}
+                                                  {isHost && (
+                                                      <td className="px-4 py-2 align-top">
+                                                          {player.is_host ? (
+                                                              <div className="flex flex-wrap gap-2">
+                                                                  {pendingTeamCountsLabel && (
+                                                                      <p className="w-full text-xs text-slate-400">
+                                                                          预分配阵营：{pendingTeamCountsLabel}
+                                                                      </p>
+                                                                  )}
                                                                 <button
                                                                     type="button"
                                                                     className="rounded border border-slate-600 px-3 py-1 text-xs text-slate-200 hover:border-emerald-400 disabled:opacity-50"
@@ -1943,12 +2109,37 @@ export function RoomPage() {
                                                                     )}
                                                                 </div>
                                                             </div>
-                                                        )}
-                                                    </td>
-                                                )}
-                                            </tr>
-                                        );
-                                    })}
+                                                          )}
+                                                      </td>
+                                                  )}
+                                                  {isHost && (
+                                                      <td className="px-4 py-2 align-top">
+                                                          <div className="flex flex-col gap-2">
+                                                              <textarea
+                                                                  className="min-h-[3rem] w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm focus:outline-none focus:ring focus:ring-emerald-500"
+                                                                  value={playerNoteDrafts[player.id] ?? ""}
+                                                                  onChange={(event) =>
+                                                                      handlePlayerNoteDraftChange(player.id, event.target.value)
+                                                                  }
+                                                                  onBlur={() => void handlePlayerNoteCommit(player)}
+                                                                  onKeyDown={(event) => {
+                                                                      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                                                                          event.preventDefault();
+                                                                          void handlePlayerNoteCommit(player);
+                                                                      }
+                                                                  }}
+                                                                  placeholder="仅主持人可见的备注"
+                                                                  disabled={playerNoteSaving[player.id]}
+                                                              />
+                                                              {playerNoteSaving[player.id] && (
+                                                                  <span className="text-xs text-slate-400">保存中...</span>
+                                                              )}
+                                                          </div>
+                                                      </td>
+                                                  )}
+                                              </tr>
+                                          );
+                                      })}
                                     </tbody>
                                 </table>
                             </div>
