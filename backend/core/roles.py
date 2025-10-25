@@ -16,7 +16,7 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["first-night", "info"],
         name_localized={"zh_CN": "洗衣妇"},
-        meta={"description": "第一夜得知两名玩家之一是特定镇民。"},
+        meta={"description": "在第一个夜晚，你会得知两名玩家和一个镇民角色：这两名玩家之一是该角色。"},
     ),
     "librarian": ScriptRole(
         id="librarian",
@@ -24,7 +24,7 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["first-night", "info"],
         name_localized={"zh_CN": "图书管理员"},
-        meta={"description": "第一夜得知两名玩家之一是外来者；若无外来者则得知一名玩家不是外来者。"},
+        meta={"description": "在第一个夜晚，你会得知两名玩家和一个外来者角色：这两名玩家之一是该角色。（或者你会得知没有外来者在场）"},
     ),
     "investigator": ScriptRole(
         id="investigator",
@@ -32,7 +32,7 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["first-night", "info"],
         name_localized={"zh_CN": "调查员"},
-        meta={"description": "第一夜得知两名玩家之一是爪牙。"},
+        meta={"description": "在第一个夜晚，你会得知两名玩家和一个爪牙角色：这两名玩家之一是该角色。（或者你会得知没有爪牙在场）"},
     ),
     "chef": ScriptRole(
         id="chef",
@@ -40,7 +40,7 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["first-night", "info"],
         name_localized={"zh_CN": "厨师"},
-        meta={"description": "第一夜得知有多少对相邻的玩家同时是爪牙与恶魔。"},
+        meta={"description": "在第一个夜晚，你会得知场上邻座的邪恶玩家有多少对。"},
     ),
     "empath": ScriptRole(
         id="empath",
@@ -48,31 +48,31 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["nightly", "info"],
         name_localized={"zh_CN": "共情者"},
-        meta={"description": "每个夜晚得知与你相邻的存活玩家中有多少恶魔。"},
+        meta={"description": "每个夜晚，你会得知你相邻的两位玩家中有多少是邪恶阵营。"},
     ),
     "fortune_teller": ScriptRole(
         id="fortune_teller",
         name="Fortune Teller",
         team="townsfolk",
         tags=["nightly", "info"],
-        name_localized={"zh_CN": "算命师"},
-        meta={"description": "每个夜晚选择两名玩家，若其中有人是恶魔你会得到提示（红衣女子可能造成误导）。"},
+        name_localized={"zh_CN": "占卜师"},
+        meta={"description": "每个夜晚，你要选择两名玩家：你会得知他们之中是否有恶魔。场上会有一名善良玩家始终被你的能力当作恶魔（干扰项）。“},
     ),
     "undertaker": ScriptRole(
         id="undertaker",
         name="Undertaker",
         team="townsfolk",
         tags=["nightly", "info"],
-        name_localized={"zh_CN": "殡葬师"},
-        meta={"description": "每个夜晚得知当天被处决玩家的真实角色。"},
+        name_localized={"zh_CN": "送葬者"},
+        meta={"description": "每个夜晚*，你会得知今天白天被处决玩家的角色。"},
     ),
     "slayer": ScriptRole(
         id="slayer",
         name="Slayer",
         team="townsfolk",
         tags=["day", "attack"],
-        name_localized={"zh_CN": "猎魔人"},
-        meta={"description": "每局一次在白天公开指向一名玩家，若其是恶魔则立即死亡。"},
+        name_localized={"zh_CN": "猎人"},
+        meta={"description": "每局游戏限用一次，你可以在白天公开选择一名玩家：若他是恶魔，该玩家死亡。"},
     ),
     "soldier": ScriptRole(
         id="soldier",
@@ -80,7 +80,7 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["passive"],
         name_localized={"zh_CN": "士兵"},
-        meta={"description": "你不会死于恶魔的夜间攻击。"},
+        meta={"description": "恶魔的负面能力对你无效。"},
     ),
     "monk": ScriptRole(
         id="monk",
@@ -88,15 +88,15 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["nightly", "protect"],
         name_localized={"zh_CN": "僧侣"},
-        meta={"description": "每个夜晚保护一名其他玩家免受恶魔攻击。"},
+        meta={"description": "每个夜晚*，你要选择一名除你以外的玩家：当晚恶魔的负面能力对其无效。"},
     ),
     "ravenkeeper": ScriptRole(
         id="ravenkeeper",
         name="Ravenkeeper",
         team="townsfolk",
         tags=["reaction"],
-        name_localized={"zh_CN": "乌鸦守护者"},
-        meta={"description": "当你在夜晚死亡时，你可以立刻得知任意一名玩家的角色。"},
+        name_localized={"zh_CN": "守鸦者"},
+        meta={"description": "如果你在夜晚死亡，你会被唤醒，然后你要选择一名玩家：你会得知他的角色。"},
     ),
     "virgin": ScriptRole(
         id="virgin",
@@ -104,7 +104,7 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["day", "info"],
         name_localized={"zh_CN": "贞女"},
-        meta={"description": "第一次被提名时，若提名者是镇民则其立即被处决且你幸存；否则你失去能力。"},
+        meta={"description": "当你第一次被提名时，若提名你的玩家是镇民，他立刻被处决。"},
     ),
     "mayor": ScriptRole(
         id="mayor",
@@ -112,7 +112,7 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["endgame"],
         name_localized={"zh_CN": "市长"},
-        meta={"description": "若处决投票平票则无人处决；你可能在夜晚死亡时改由其他玩家代替。"},
+        meta={"description": "如果只有三名玩家存活且白天没有人被处决，你的阵营获胜。如果你在夜晚即将死亡，可能会有一名其他玩家代替你死亡。"},
     ),
     "butler": ScriptRole(
         id="butler",
@@ -120,7 +120,7 @@ ROLES: dict[str, ScriptRole] = {
         team="outsider",
         tags=["nightly"],
         name_localized={"zh_CN": "管家"},
-        meta={"description": "你必须跟随指定的镇民投票；你认为自己只能在其投票时参与。"},
+        meta={"description": "每个夜晚，你选择一名玩家（除自己以外）：明天白天，只有他能投票时你才能投票。"},
     ),
     "drunk": ScriptRole(
         id="drunk",
@@ -129,7 +129,7 @@ ROLES: dict[str, ScriptRole] = {
         tags=["secret"],
         name_localized={"zh_CN": "酒鬼"},
         meta={
-            "description": "你以为自己是某个镇民，但其实是酒鬼且能力无效。",
+            "description": "你不知道自己是酒鬼。你认为自己是某个镇民角色，但其实你不是。",
             "attachment_slots": [
                 {
                     "id": "drunk_false_role",
@@ -147,8 +147,8 @@ ROLES: dict[str, ScriptRole] = {
         name="Recluse",
         team="outsider",
         tags=["secret"],
-        name_localized={"zh_CN": "隐士"},
-        meta={"description": "你可能被主持人视为爪牙或恶魔。"},
+        name_localized={"zh_CN": "陌客"},
+        meta={"description": "你可能会被当作邪恶阵营、爪牙或恶魔角色，即使你已死亡。"},
     ),
     "saint": ScriptRole(
         id="saint",
@@ -156,7 +156,7 @@ ROLES: dict[str, ScriptRole] = {
         team="outsider",
         tags=["day"],
         name_localized={"zh_CN": "圣徒"},
-        meta={"description": "如果你在白天被处决，善阵营立即失败。"},
+        meta={"description": "如果你死于处决，你的阵营落败。"},
     ),
     "poisoner": ScriptRole(
         id="poisoner",
@@ -164,7 +164,7 @@ ROLES: dict[str, ScriptRole] = {
         team="minion",
         tags=["nightly", "attack"],
         name_localized={"zh_CN": "投毒者"},
-        meta={"description": "每个夜晚使一名玩家中毒，他们的能力会产生错误结果。"},
+        meta={"description": "每个夜晚，你选择一名玩家：他在当晚和明天。"},
     ),
     "spy": ScriptRole(
         id="spy",
@@ -172,7 +172,7 @@ ROLES: dict[str, ScriptRole] = {
         team="minion",
         tags=["nightly", "info"],
         name_localized={"zh_CN": "间谍"},
-        meta={"description": "你能看到主持人的所有手册信息，并被当作善方角色。"},
+        meta={"description": "每个夜晚，你都能查看魔典。你可能会被当作善良阵营、镇民或外来者角色，即使你已死亡。"},
     ),
     "scarlet_woman": ScriptRole(
         id="scarlet_woman",
@@ -180,7 +180,7 @@ ROLES: dict[str, ScriptRole] = {
         team="minion",
         tags=["passive"],
         name_localized={"zh_CN": "绯红女子"},
-        meta={"description": "若恶魔在至少3名存活玩家时死亡，你可以立即接替成为恶魔。"},
+        meta={"description": "如果大于等于五名玩家存活时（不包括旅行者）恶魔死亡，你会变成那个恶魔。"},
     ),
     "baron": ScriptRole(
         id="baron",
@@ -188,7 +188,7 @@ ROLES: dict[str, ScriptRole] = {
         team="minion",
         tags=["setup"],
         name_localized={"zh_CN": "男爵"},
-        meta={"description": "游戏中额外增加两名外来者，同时减少两名镇民。"},
+        meta={"description": "会有额外的外来者在场。[+2外来者]"},
     ),
     "imp": ScriptRole(
         id="imp",
@@ -197,13 +197,13 @@ ROLES: dict[str, ScriptRole] = {
         tags=["nightly", "attack"],
         name_localized={"zh_CN": "小恶魔"},
         meta={
-            "description": "每个夜晚杀死一名玩家；你可以自杀并让一名爪牙成为新的恶魔。",
+            "description": "每个夜晚*，你要选择一名玩家：他死亡。如果你以这种方式自杀，一名爪牙会变成小恶魔。",
             "attachment_slots": [
                 {
                     "id": "demon_bluff",
                     "label": "恶魔伪装角色",
                     "count": 3,
-                    "team_filter": ["townsfolk", "outsider", "minion"],
+                    "team_filter": ["townsfolk", "outsider"],
                     "allow_duplicates": False,
                 }
             ],
