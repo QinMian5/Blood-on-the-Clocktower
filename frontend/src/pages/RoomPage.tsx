@@ -1,5 +1,5 @@
 import {isAxiosError} from "axios";
-import {Fragment, useCallback, useEffect, useMemo, useState} from "react";
+import {Fragment, useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
 
 import {
@@ -198,6 +198,23 @@ export function RoomPage() {
     const [seatUpdating, setSeatUpdating] = useState<Record<string, boolean>>({});
     const [seatMessage, setSeatMessage] = useState<string | null>(null);
     const [seatMessageType, setSeatMessageType] = useState<"info" | "error" | null>(null);
+    const playerNoteRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+
+    const autoResizeTextArea = useCallback((element: HTMLTextAreaElement | null) => {
+        if (!element) {
+            return;
+        }
+        element.style.height = "auto";
+        element.style.height = `${element.scrollHeight}px`;
+    }, []);
+
+    const registerPlayerNoteRef = useCallback(
+        (playerId: string) => (element: HTMLTextAreaElement | null) => {
+            playerNoteRefs.current[playerId] = element;
+            autoResizeTextArea(element);
+        },
+        [autoResizeTextArea]
+    );
     const [showPlayerList, setShowPlayerList] = useState(true);
     const [showHistory, setShowHistory] = useState(true);
     const [manualTotalDrafts, setManualTotalDrafts] = useState<Record<string, string>>({});
@@ -449,6 +466,12 @@ export function RoomPage() {
         });
         setPlayerNoteDrafts(drafts);
     }, [players]);
+
+    useEffect(() => {
+        players.forEach((player) => {
+            autoResizeTextArea(playerNoteRefs.current[player.id] ?? null);
+        });
+    }, [players, playerNoteDrafts, autoResizeTextArea]);
     const selectedExecutionNomination = useMemo(
         () => todaysNominations.find((item) => item.id === executionNominationId) ?? null,
         [todaysNominations, executionNominationId]
@@ -621,9 +644,17 @@ export function RoomPage() {
         [snapshot]
     );
 
-    const handlePlayerNoteDraftChange = useCallback((playerId: string, value: string) => {
-        setPlayerNoteDrafts((drafts) => ({...drafts, [playerId]: value}));
-    }, []);
+    const handlePlayerNoteDraftChange = useCallback(
+        (playerId: string, value: string, element?: HTMLTextAreaElement | null) => {
+            setPlayerNoteDrafts((drafts) => ({...drafts, [playerId]: value}));
+            if (element) {
+                autoResizeTextArea(element);
+            } else {
+                autoResizeTextArea(playerNoteRefs.current[playerId] ?? null);
+            }
+        },
+        [autoResizeTextArea]
+    );
 
     const handlePlayerNoteCommit = useCallback(
         async (player: RoomPlayer) => {
@@ -1887,7 +1918,7 @@ export function RoomPage() {
                                         <th className="px-4 py-2 text-left">座位</th>
                                         <th className="px-4 py-2 text-left">姓名</th>
                                         <th className="px-4 py-2 text-left">状态</th>
-                                        {isHost && <th className="px-4 py-2 text-left">角色</th>}
+                                        {isHost && <th className="w-52 px-4 py-2 text-left">角色</th>}
                                         {isHost && <th className="px-4 py-2 text-left">备注</th>}
                                     </tr>
                                     </thead>
@@ -2007,7 +2038,7 @@ export function RoomPage() {
                                                     </div>
                                                 </td>
                                                   {isHost && (
-                                                      <td className="px-4 py-2 align-top">
+                                                      <td className="w-52 px-4 py-2 align-top">
                                                           {player.is_host ? (
                                                               <div className="flex flex-wrap gap-2">
                                                                   {pendingTeamCountsLabel && (
@@ -2161,10 +2192,16 @@ export function RoomPage() {
                                                       <td className="px-4 py-2 align-top">
                                                           <div className="flex flex-col gap-2">
                                                               <textarea
-                                                                  className="min-h-[3rem] w-full rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm focus:outline-none focus:ring focus:ring-emerald-500"
+                                                                  ref={registerPlayerNoteRef(player.id)}
+                                                                  rows={1}
+                                                                  className="w-full resize-none rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm focus:outline-none focus:ring focus:ring-emerald-500"
                                                                   value={playerNoteDrafts[player.id] ?? ""}
                                                                   onChange={(event) =>
-                                                                      handlePlayerNoteDraftChange(player.id, event.target.value)
+                                                                      handlePlayerNoteDraftChange(
+                                                                          player.id,
+                                                                          event.currentTarget.value,
+                                                                          event.currentTarget
+                                                                      )
                                                                   }
                                                                   onBlur={() => void handlePlayerNoteCommit(player)}
                                                                   onKeyDown={(event) => {
