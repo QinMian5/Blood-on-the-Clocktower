@@ -56,7 +56,7 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["nightly", "info"],
         name_localized={"zh_CN": "占卜师"},
-        meta={"description": "每个夜晚，你要选择两名玩家：你会得知他们之中是否有恶魔。场上会有一名善良玩家始终被你的能力当作恶魔（干扰项）。“},
+        meta={"description": "每个夜晚，你要选择两名玩家：你会得知他们之中是否有恶魔。场上会有一名善良玩家始终被你的能力当作恶魔（干扰项）。"},
     ),
     "undertaker": ScriptRole(
         id="undertaker",
