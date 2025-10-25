@@ -607,7 +607,18 @@ ROLES: dict[str, ScriptRole] = {
         team="demon",
         tags=["nightly", "attack", "public"],
         name_localized={"zh_CN": "哈迪寂亚"},
-        meta={"description": "每个夜晚*，你要选择三名玩家（所有玩家都会得知你选了谁）：他们分别秘密决定自己的生死，然后如果他们都存活则都死亡。"},
+        meta={
+            "description": "每个夜晚*，你要选择三名玩家（所有玩家都会得知你选了谁）：他们分别秘密决定自己的生死，然后如果他们都存活则都死亡。",
+            "attachment_slots": [
+                {
+                    "id": "demon_bluff",
+                    "label": "恶魔伪装角色",
+                    "count": 3,
+                    "team_filter": ["townsfolk", "outsider"],
+                    "allow_duplicates": False,
+                }
+            ],
+        },
     ),
     "ossuary_demon": ScriptRole(
         id="ossuary_demon",
@@ -615,11 +626,305 @@ ROLES: dict[str, ScriptRole] = {
         team="demon",
         tags=["nightly", "attack", "poison"],
         name_localized={"zh_CN": "亡骨魔"},
-        meta={"description": "每个夜晚*，你要选择一名玩家：他死亡。被你杀死的爪牙保留他的能力，且与他邻近的两名镇民之一中毒。[-1 外来者]"},
+        meta={
+            "description": "每个夜晚*，你要选择一名玩家：他死亡。被你杀死的爪牙保留他的能力，且与他邻近的两名镇民之一中毒。[-1 外来者]",
+            "attachment_slots": [
+                {
+                    "id": "demon_bluff",
+                    "label": "恶魔伪装角色",
+                    "count": 3,
+                    "team_filter": ["townsfolk", "outsider"],
+                    "allow_duplicates": False,
+                }
+            ],
+        },
     ),
 
 
 
+    """紫罗兰角色"""
+    "artist": ScriptRole(
+        id="artist",
+        name="Artist",
+        team="townsfolk",
+        tags=["limited-use", "day", "info"],
+        name_localized={"zh_CN": "艺术家"},
+        meta={"description": "每局游戏限一次，在白天时，你可以私下询问说书人一个是/否答案问题。"},
+    ),
+    "clockmaker": ScriptRole(
+        id="clockmaker",
+        name="Clockmaker",
+        team="townsfolk",
+        tags=["first-night", "info"],
+        name_localized={"zh_CN": "钟表匠"},
+        meta={"description": "在游戏开始时，你会得知恶魔与其最近爪牙之间的距离（1代表相邻）。"},
+    ),
+    "dreamer": ScriptRole(
+        id="dreamer",
+        name="Dreamer",
+        team="townsfolk",
+        tags=["nightly", "info"],
+        name_localized={"zh_CN": "梦小者"},
+        meta={"description": "每个夜晚，选择一名玩家（不能是自己或旅行者）；你会得知一个善良角色和一个邪恶角色，其中一个是正确的。"},
+    ),
+    "flowergirl": ScriptRole(
+        id="flowergirl",
+        name="Flowergirl",
+        team="townsfolk",
+        tags=["nightly", "info"],
+        name_localized={"zh_CN": "卖花女"},
+        meta={"description": "每个夜晚*，你会得知恶魔是否在白天投过票。"},
+    ),
+    "juggler": ScriptRole(
+        id="juggler",
+        name="Juggler",
+        team="townsfolk",
+        tags=["first-day", "info"],
+        name_localized={"zh_CN": "杂耍者"},
+        meta={"description": "在你的第一个白天，公开猜测至多5名玩家的角色。那个晚上，你能得知猜测正确的个数。"},
+    ),
+    "mathematician": ScriptRole(
+        id="mathematician",
+        name="Mathematician",
+        team="townsfolk",
+        tags=["nightly", "info"],
+        name_localized={"zh_CN": "数学家"},
+        meta={"description": "每个夜晚，你会得知今天白天和这个夜晚总共有多少名玩家的能力因其他角色的能力的影响而未能获得如愿的结果。"},
+    ),
+    "oracle": ScriptRole(
+        id="oracle",
+        name="Oracle",
+        team="townsfolk",
+        tags=["nightly", "info"],
+        name_localized={"zh_CN": "神谕者"},
+        meta={"description": "每个夜晚，你会得知死亡的玩家中有多少名是邪恶阵营的。"},
+    ),
+    "philosopher": ScriptRole(
+        id="philosopher",
+        name="Philosopher",
+        team="townsfolk",
+        tags=["limited-use", "nightly", "copy"],
+        name_localized={"zh_CN": "哲学家"},
+        meta={"description": "每局游戏限一次，在夜晚，挑选一个善良阵营的角色，获得该角色能力。如果该角色在场，则其持续醉酒。"},
+    ),
+    "sage": ScriptRole(
+        id="sage",
+        name="Sage",
+        team="townsfolk",
+        tags=["reaction", "info"],
+        name_localized={"zh_CN": "贤者"},
+        meta={"description": "如果恶魔杀死了你，你会得知两名玩家，其中一位是恶魔。"},
+    ),
+    "courtier": ScriptRole(
+        id="courtier",
+        name="Courtier",
+        team="townsfolk",
+        tags=["limited-use", "nightly", "info"],
+        name_localized={"zh_CN": "裁缝"},
+        meta={"description": "每局游戏限一次，在夜晚时，选择两名玩家（不能是自己）；你会得知他们是否属于同一阵营。"},
+    ),
+    "town_crier": ScriptRole(
+        id="town_crier",
+        name="Town Crier",
+        team="townsfolk",
+        tags=["nightly", "info"],
+        name_localized={"zh_CN": "公告员"},
+        meta={"description": "每个夜晚，你会得知是否有爪牙在今天发起了提名。"},
+    ),
+    "mutant": ScriptRole(
+        id="mutant",
+        name="Mutant",
+        team="outsider",
+        tags=["special", "madness"],
+        name_localized={"zh_CN": "变种人"},
+        meta={"description": "如果你“疯狂”地认为自己是外来者，那么你可能会立即被处决。"},
+    ),
+    "drunk_lover": ScriptRole(
+        id="drunk_lover",
+        name="Sweetheart",
+        team="outsider",
+        tags=["death_trigger", "drunk_effect"],
+        name_localized={"zh_CN": "心上人"},
+        meta={"description": "当你死亡时，一名其他玩家将持续醉酒。"},
+    ),
+    "fool": ScriptRole(
+        id="fool",
+        name="Fool",
+        team="outsider",
+        tags=["death_trigger", "risk"],
+        name_localized={"zh_CN": "傻瓜"},
+        meta={"description": "当你得知你的死亡时，公开选择一名活着的玩家；如果该玩家是邪恶的，你的阵营落败。"},
+    ),
+    "evil_twin": ScriptRole(
+        id="evil_twin",
+        name="Evil Twin",
+        team="minion",
+        tags=["pair", "knowledge", "win_condition"],
+        name_localized={"zh_CN": "镜像双子"},
+        meta={
+            "description": "你和一个对立阵营的玩家相互认识。其中善良阵营的玩家被处决时，邪恶阵营直接获胜。双子都存活时，善良阵营玩家无法获胜。"
+        },
+    ),
+    "cerenovus": ScriptRole(
+        id="cerenovus",
+        name="Cerenovus",
+        team="minion",
+        tags=["nightly", "madness"],
+        name_localized={"zh_CN": "洗脑师"},
+        meta={
+            "description": "每个夜晚，你选择一名玩家和一个善良阵营角色；该玩家在次日必须“疯狂”地认为自己是该角色，否则可能会被立刻处决。"
+        },
+    ),
+    "wizard": ScriptRole(
+        id="wizard",
+        name="Wizard",
+        team="minion",
+        tags=["nightly", "nomination_death", "limited"],
+        name_localized={"zh_CN": "巫师"},
+        meta={
+            "description": "每个夜晚，你选择一名玩家；如果该玩家在第二天发起提名，则其死亡。如果仅剩 3 名玩家存活，你失去此能力。"
+        },
+    ),
+    "pit_dreamer": ScriptRole(
+        id="pit_dreamer",
+        name="Pukka",
+        team="demon",
+        tags=["night_kill", "outsider_conversion"],
+        name_localized={"zh_CN": "噩梦游魂"},
+        meta={
+            "description": "每个夜晚*，选择并杀死一名玩家。第一个因该能力被杀死的外来者会成为邪恶的噩梦游魂，同时你代替其死亡。",
+            "attachment_slots": [
+                {
+                    "id": "demon_bluff",
+                    "label": "恶魔伪装角色",
+                    "count": 3,
+                    "team_filter": ["townsfolk", "outsider"],
+                    "allow_duplicates": False,
+                }
+            ],
+        },
+    ),
+    "poison_god": ScriptRole(
+        id="poison_god",
+        name="Po",
+        team="demon",
+        tags=["night_kill", "poison"],
+        name_localized={"zh_CN": "腐化邪神"},
+        meta={
+            "description": "每个夜晚*，选择并杀死一名玩家。你两侧最近的村民处于持续中毒状态。",
+            "attachment_slots": [
+                {
+                    "id": "demon_bluff",
+                    "label": "恶魔伪装角色",
+                    "count": 3,
+                    "team_filter": ["townsfolk", "outsider"],
+                    "allow_duplicates": False,
+                }
+            ],
+        },
+    ),
+    "whirlpool": ScriptRole(
+        id="whirlpool",
+        name="Vortex",
+        team="demon",
+        tags=["night_kill", "false_info", "alt_win_condition"],
+        name_localized={"zh_CN": "迷乱漩涡"},
+        meta={
+            "description": "每个夜晚*，选择并杀死一名玩家。村民永远会获得错误的信息。每个白天如果没有玩家被处决，邪恶阵营获胜。",
+            "attachment_slots": [
+                {
+                    "id": "demon_bluff",
+                    "label": "恶魔伪装角色",
+                    "count": 3,
+                    "team_filter": ["townsfolk", "outsider"],
+                    "allow_duplicates": False,
+                }
+            ],
+        },
+    ),
+
+    """横行霸道额外角色"""
+    "alchemist": ScriptRole(
+        id="alchemist",
+        name="Alchemist",
+        team="minion",
+        tags=["borrowed_ability"],
+        name_localized={"zh_CN": "炼金术士"},
+        meta={
+            "description": "你拥有一个不在场的爪牙角色的能力。"
+        },
+    ),
+    "general": ScriptRole(
+        id="general",
+        name="General",
+        team="townsfolk",
+        tags=["alignment_hint"],
+        name_localized={"zh_CN": "将军"},
+        meta={
+            "description": "每个夜晚，你会得知说书人认为哪个阵营当前更有优势。（善良 / 邪恶 / 均势）"
+        },
+    ),
+    "politician": ScriptRole(
+        id="politician",
+        name="Politician",
+        team="townsfolk",
+        tags=["alignment_shift", "special_win"],
+        name_localized={"zh_CN": "政客"},
+        meta={
+            "description": "如果你是对你的阵营落败负最大责任的人，你转变阵营并获胜，即使你已死亡。"
+        },
+    ),
+    "heretic": ScriptRole(
+        id="heretic",
+        name="Heretic",
+        team="traveller",
+        tags=["special_win"],
+        name_localized={"zh_CN": "异端分子"},
+        meta={
+            "description": "对调胜负结果，即使你已死亡。"
+        },
+    ),
+    "fear_spirit": ScriptRole(
+        id="fear_spirit",
+        name="Spirit of Fear",
+        team="demon",
+        tags=["night_action", "curse_link"],
+        name_localized={"zh_CN": "恐惧之灵"},
+        meta={
+            "description": "每个夜晚，你要选择一名玩家；如果你提名的他被处决，他的阵营落败。当你首次选择或更换目标时，所有玩家都会得知你选择了新目标。"
+        },
+    ),
+    "goblin": ScriptRole(
+        id="goblin",
+        name="Goblin",
+        team="minion",
+        tags=["public_announcement", "execution_win"],
+        name_localized={"zh_CN": "哥布林"},
+        meta={
+            "description": "如果你在被提名后公开声明自己是哥布林且在那个白天被处决，你的阵营获胜。"
+        },
+    ),
+    "leeches": ScriptRole(
+        id="leeches",
+        name="Leech",
+        team="demon",
+        tags=["night_action", "poison_link"],
+        name_localized={"zh_CN": "痢蛭"},
+        meta={
+            "description": "每个夜晚*，你选择一名玩家：他死亡。在你的首个夜晚，你要选择一名存活的玩家：他中毒，只有他死亡时你才会一同死亡。",
+            "attachment_slots": [
+                {
+                    "id": "demon_bluff",
+                    "label": "恶魔伪装角色",
+                    "count": 3,
+                    "team_filter": ["townsfolk", "outsider"],
+                    "allow_duplicates": False,
+                }
+            ],
+        },
+    ),
+
+    
 }
 
 
