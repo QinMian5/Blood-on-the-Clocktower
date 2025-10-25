@@ -46,6 +46,7 @@ class PlayerState:
     is_bot: bool = False
     role_attachments: list["RoleAttachment"] = field(default_factory=list)
     life_status: LifeStatus = LifeStatus.ALIVE
+    note: str = ""
 
 
 @dataclass
@@ -199,4 +200,5 @@ class ExecutionRecord:
     votes_for: int
     alive_count: int
     nomination_id: str | None = None
+    target_dead: bool | None = None
     ts: datetime = field(default_factory=datetime.utcnow)

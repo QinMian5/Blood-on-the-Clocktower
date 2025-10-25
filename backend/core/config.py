@@ -8,9 +8,11 @@ class Settings:
     db_url: str = os.getenv("DB_URL", "sqlite+aiosqlite:///./app.db")
     redis_url: str | None = os.getenv("REDIS_URL") or None
     user_db_path: str = os.getenv("USER_DB_PATH", "./backend/data/users.db")
+    game_db_path: str = os.getenv("GAME_DB_PATH", "./backend/data/game_records.db")
     registration_codes_path: str = os.getenv(
         "REGISTRATION_CODES_PATH", "./backend/data/registration_codes.txt"
     )
+    admin_secrets_path: str = os.getenv("ADMIN_SECRETS_PATH", "/etc/secrets/admin")
     cors_origins: list[str]
 
     def __init__(self) -> None:

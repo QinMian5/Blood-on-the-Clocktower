@@ -20,6 +20,7 @@ class User:
     username: str
     nickname: str
     can_create_room: bool
+    is_admin: bool
     created_at: datetime
 
 
@@ -50,10 +51,16 @@ class UserStore:
                     salt TEXT NOT NULL,
                     nickname TEXT NOT NULL,
                     can_create_room INTEGER NOT NULL DEFAULT 0,
+                    is_admin INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL
                 )
                 """
             )
+            # 兼容旧版本数据库，确保新增列存在。
+            try:
+                conn.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0")
+            except sqlite3.OperationalError:
+                pass
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self._db_path, check_same_thread=False)
@@ -79,8 +86,17 @@ class UserStore:
         try:
             with self._connect() as conn:
                 cursor = conn.execute(
-                    "INSERT INTO users (username, password_hash, salt, nickname, can_create_room, created_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    """
+                    INSERT INTO users (
+                        username,
+                        password_hash,
+                        salt,
+                        nickname,
+                        can_create_room,
+                        is_admin,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, 0, ?)
+                    """,
                     (username, password_hash, salt, nickname, int(can_create_room), now),
                 )
                 user_id = cursor.lastrowid
@@ -123,5 +139,55 @@ class UserStore:
             username=row["username"],
             nickname=row["nickname"],
             can_create_room=bool(row["can_create_room"]),
+            is_admin=bool(row["is_admin"]),
             created_at=datetime.fromisoformat(row["created_at"]),
         )
+
+    def list_users(self, search: str | None = None, *, limit: int = 100) -> list[User]:
+        query = "SELECT * FROM users"
+        params: list[object] = []
+        if search:
+            query += " WHERE username LIKE ?"
+            params.append(f"%{search}%")
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+        return [self._row_to_user(row) for row in rows]
+
+    def update_user_permissions(
+        self,
+        user_id: int,
+        *,
+        can_create_room: bool | None = None,
+        nickname: str | None = None,
+    ) -> User:
+        if can_create_room is None and nickname is None:
+            return self.get_user_by_id(user_id)
+        updates: list[str] = []
+        params: list[object] = []
+        if can_create_room is not None:
+            updates.append("can_create_room = ?")
+            params.append(int(can_create_room))
+        if nickname is not None:
+            updates.append("nickname = ?")
+            params.append(nickname)
+        params.append(user_id)
+        with self._connect() as conn:
+            cursor = conn.execute(
+                f"UPDATE users SET {', '.join(updates)} WHERE id = ?",
+                params,
+            )
+            if cursor.rowcount == 0:
+                raise ValueError("用户不存在")
+        return self.get_user_by_id(user_id)
+
+    def delete_user(self, user_id: int) -> None:
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            if cursor.rowcount == 0:
+                raise ValueError("用户不存在")
+
+    @property
+    def db_path(self) -> Path:
+        return self._db_path

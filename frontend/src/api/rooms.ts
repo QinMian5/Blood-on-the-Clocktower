@@ -23,6 +23,12 @@ export interface AssignRolesResponse {
   finalized: boolean;
 }
 
+export interface RoomScriptInfo {
+  id: string;
+  name: string;
+  version: string;
+}
+
 export async function createRoom(options: { scriptId?: string; hostName?: string } = {}) {
   const payload: Record<string, unknown> = {};
   if (options.hostName) {
@@ -40,6 +46,11 @@ export async function createRoom(options: { scriptId?: string; hostName?: string
   };
   setAuthToken(data.host_token);
   return data;
+}
+
+export async function fetchScripts() {
+  const response = await apiClient.get("/rooms/scripts");
+  return response.data as RoomScriptInfo[];
 }
 
 export async function joinRoom(code: string, name?: string) {
@@ -65,6 +76,11 @@ export async function updateSeat(roomId: string, seat: number, options: { player
   }
   const response = await apiClient.post(`/rooms/${roomId}/seat`, payload);
   return response.data as { seat: number };
+}
+
+export async function removeRoomPlayer(roomId: string, playerId: string) {
+  const response = await apiClient.delete(`/rooms/${roomId}/players/${playerId}`);
+  return response.data as { status: string };
 }
 
 export async function fetchSnapshot(roomId: string) {
@@ -173,13 +189,29 @@ export async function updatePlayerStatus(
 
 export async function recordExecution(
   roomId: string,
-  options: { nominationId?: string | null; executedSeat?: number | null }
+  options: { nominationId?: string | null; executedSeat?: number | null; targetDead?: boolean | null }
 ) {
-  const response = await apiClient.post(`/rooms/${roomId}/execution`, {
+  const payload: Record<string, unknown> = {
     nomination_id: options.nominationId ?? null,
     executed_seat: options.executedSeat ?? null
+  };
+  if (options.targetDead !== undefined) {
+    payload.target_dead = options.targetDead;
+  }
+  const response = await apiClient.post(`/rooms/${roomId}/execution`, payload);
+  return response.data as {
+    day: number;
+    nomination_id: string | null;
+    executed: number | null;
+    target_dead: boolean | null;
+  };
+}
+
+export async function updatePlayerNote(roomId: string, playerId: string, note: string) {
+  const response = await apiClient.post(`/rooms/${roomId}/players/${playerId}/note`, {
+    note
   });
-  return response.data as { day: number; nomination_id: string | null; executed: number | null };
+  return response.data as { note: string };
 }
 
 export async function sendNightAction(

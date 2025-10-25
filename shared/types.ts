@@ -28,6 +28,7 @@ export interface SnapshotPlayer {
   seat_conflict?: boolean;
   role_secret?: LocalizedRoleName | null;
   role_attachments?: RoleAttachmentView[];
+  note?: string;
 }
 
 export interface ScriptRoleInfo {
@@ -95,6 +96,7 @@ export interface ExecutionRecordView {
   votes_for: number;
   alive_count: number;
   nomination_id?: string | null;
+  target_dead?: boolean | null;
   ts: string;
 }
 

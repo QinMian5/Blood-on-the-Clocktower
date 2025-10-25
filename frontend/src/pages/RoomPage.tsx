@@ -1,5 +1,5 @@
 import {isAxiosError} from "axios";
-import {Fragment, useCallback, useEffect, useMemo, useState} from "react";
+import {Fragment, useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {useNavigate, useParams} from "react-router-dom";
 
 import {
@@ -8,6 +8,7 @@ import {
     fetchSnapshot,
     nominate,
     recordExecution,
+    removeRoomPlayer,
     resetRoom,
     sendVote,
     setGameResult,
@@ -15,7 +16,8 @@ import {
     updateNominationTotal,
     updatePlayerStatus,
     updateSeat,
-    revertNomination
+    revertNomination,
+    updatePlayerNote
 } from "../api/rooms";
 import type {
     LocalizedRoleName,
@@ -26,6 +28,7 @@ import type {
     RoomPlayer,
     ScriptRoleInfo
 } from "../api/types";
+import {clearAuthToken} from "../api/client";
 import {useRoomStore} from "../store/roomStore";
 
 const ROLE_TEAM_ORDER = ["townsfolk", "outsider", "minion", "demon"];
@@ -35,6 +38,12 @@ const TEAM_LABEL: Record<string, string> = {
     minion: "爪牙",
     demon: "恶魔",
     unknown: "其他"
+};
+const TEAM_CARD_CLASSES: Record<string, string> = {
+    townsfolk: "border-sky-500/60 bg-sky-500/10",
+    outsider: "border-sky-500/60 bg-sky-500/10",
+    minion: "border-rose-500/60 bg-rose-500/10",
+    demon: "border-rose-500/60 bg-rose-500/10"
 };
 
 const LIFE_STATUS_OPTIONS: Array<{ value: LifeStatusValue; label: string }> = [
@@ -135,6 +144,15 @@ function renderTeam(team?: string) {
     return TEAM_LABEL[team] ?? team;
 }
 
+function renderRoleNameOnly(role: { name: string; name_localized?: Record<string, string> | null | undefined }) {
+    const zhName = role.name_localized?.zh_CN ?? role.name_localized?.zh_cn;
+    return zhName ?? role.name;
+}
+
+function computeExecutionThreshold(alivePlayers: number) {
+    return Math.floor(alivePlayers / 2) + 1;
+}
+
 function formatSeatLabel(seat: number) {
     return seat === 0 ? "说书人" : `${seat} 号`;
 }
@@ -177,6 +195,7 @@ export function RoomPage() {
     const status = useRoomStore((state) => state.status);
     const credentials = useRoomStore((state) => state.credentials);
     const lastError = useRoomStore((state) => state.lastError);
+    const disconnectRoom = useRoomStore((state) => state.disconnect);
 
     const [hostMessage, setHostMessage] = useState<string | null>(null);
     const [hostMessageType, setHostMessageType] = useState<"info" | "error" | null>(null);
@@ -187,6 +206,23 @@ export function RoomPage() {
     const [seatUpdating, setSeatUpdating] = useState<Record<string, boolean>>({});
     const [seatMessage, setSeatMessage] = useState<string | null>(null);
     const [seatMessageType, setSeatMessageType] = useState<"info" | "error" | null>(null);
+    const playerNoteRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
+
+    const autoResizeTextArea = useCallback((element: HTMLTextAreaElement | null) => {
+        if (!element) {
+            return;
+        }
+        element.style.height = "auto";
+        element.style.height = `${element.scrollHeight}px`;
+    }, []);
+
+    const registerPlayerNoteRef = useCallback(
+        (playerId: string) => (element: HTMLTextAreaElement | null) => {
+            playerNoteRefs.current[playerId] = element;
+            autoResizeTextArea(element);
+        },
+        [autoResizeTextArea]
+    );
     const [showPlayerList, setShowPlayerList] = useState(true);
     const [showHistory, setShowHistory] = useState(true);
     const [manualTotalDrafts, setManualTotalDrafts] = useState<Record<string, string>>({});
@@ -194,6 +230,9 @@ export function RoomPage() {
     const [resetDialogOpen, setResetDialogOpen] = useState(false);
     const [gameEndDialogOpen, setGameEndDialogOpen] = useState(false);
     const [statusUpdating, setStatusUpdating] = useState<Record<string, boolean>>({});
+    const [playerNoteDrafts, setPlayerNoteDrafts] = useState<Record<string, string>>({});
+    const [playerNoteSaving, setPlayerNoteSaving] = useState<Record<string, boolean>>({});
+    const [removingPlayers, setRemovingPlayers] = useState<Record<string, boolean>>({});
     const [nomineeSeatInput, setNomineeSeatInput] = useState<string>("");
     const [nominatorSeatInput, setNominatorSeatInput] = useState<string>("");
     const [voteSubmitting, setVoteSubmitting] = useState(false);
@@ -227,6 +266,7 @@ export function RoomPage() {
 
     const players: RoomPlayer[] = snapshot?.players ?? [];
     const me = players.find((player) => player.me);
+    const myPlayerId = me?.id ?? null;
     const activePlayers = players.filter((player) => player.seat > 0);
     const playerCount = activePlayers.length;
     const playersById = useMemo(() => {
@@ -429,14 +469,107 @@ export function RoomPage() {
         });
         setManualTotalDrafts(next);
     }, [nominations]);
+    useEffect(() => {
+        const drafts: Record<string, string> = {};
+        players.forEach((player) => {
+            drafts[player.id] = player.note ?? "";
+        });
+        setPlayerNoteDrafts(drafts);
+    }, [players]);
+
+    useEffect(() => {
+        players.forEach((player) => {
+            autoResizeTextArea(playerNoteRefs.current[player.id] ?? null);
+        });
+    }, [players, playerNoteDrafts, autoResizeTextArea]);
     const selectedExecutionNomination = useMemo(
         () => todaysNominations.find((item) => item.id === executionNominationId) ?? null,
         [todaysNominations, executionNominationId]
     );
+    const hasExecutionTarget = useMemo(() => {
+        if (executionSeat === "") {
+            return false;
+        }
+        const parsed = Number.parseInt(executionSeat, 10);
+        return !Number.isNaN(parsed) && parsed >= 0;
+    }, [executionSeat]);
     const aliveCount = useMemo(
         () => players.filter((player) => !player.is_host && player.life_status === "alive").length,
         [players]
     );
+    const resolveNominationTotal = useCallback(
+        (nomination: RoomNomination) =>
+            nomination.manual_total ?? nomination.votes.filter((vote) => vote.value).length,
+        []
+    );
+    const executionBlockByDay = useMemo(() => {
+        const grouped = new Map<number, RoomNomination[]>();
+        nominations.forEach((nomination) => {
+            if (!grouped.has(nomination.day)) {
+                grouped.set(nomination.day, []);
+            }
+            grouped.get(nomination.day)!.push(nomination);
+        });
+        const aliveCounts = new Map<number, number>();
+        executions.forEach((record) => {
+            if (!aliveCounts.has(record.day)) {
+                aliveCounts.set(record.day, record.alive_count);
+            }
+        });
+        if (currentDay > 0 && !aliveCounts.has(currentDay)) {
+            aliveCounts.set(currentDay, aliveCount);
+        }
+        const result = new Map<
+            number,
+            { nominationId: string | null; tie: boolean; hasCompleted: boolean; threshold: number }
+        >();
+        grouped.forEach((items, day) => {
+            const completed = items.filter((item) => item.vote_completed);
+            const aliveForDay = aliveCounts.get(day) ?? aliveCount;
+            const threshold = computeExecutionThreshold(aliveForDay);
+            if (completed.length === 0) {
+                result.set(day, { nominationId: null, tie: false, hasCompleted: false, threshold });
+                return;
+            }
+            let bestNominationId: string | null = null;
+            let bestTotal = Number.NEGATIVE_INFINITY;
+            let tie = false;
+            completed.forEach((item) => {
+                const total = resolveNominationTotal(item);
+                if (total < threshold) {
+                    return;
+                }
+                if (bestNominationId === null || total > bestTotal) {
+                    bestNominationId = item.id;
+                    bestTotal = total;
+                    tie = false;
+                } else if (total === bestTotal) {
+                    tie = true;
+                }
+            });
+            if (bestNominationId === null) {
+                result.set(day, { nominationId: null, tie: false, hasCompleted: true, threshold });
+            } else if (tie) {
+                result.set(day, { nominationId: null, tie: true, hasCompleted: true, threshold });
+            } else {
+                result.set(day, { nominationId: bestNominationId, tie: false, hasCompleted: true, threshold });
+            }
+        });
+        return result;
+    }, [
+        nominations,
+        resolveNominationTotal,
+        executions,
+        currentDay,
+        aliveCount
+    ]);
+    const todaysExecutionThreshold = useMemo(() => {
+        const info = executionBlockByDay.get(currentDay);
+        if (info) {
+            return info.threshold;
+        }
+        return computeExecutionThreshold(aliveCount);
+    }, [executionBlockByDay, currentDay, aliveCount]);
     const activeNomination = useMemo(() => {
         if (!voteSession) {
             return null;
@@ -519,6 +652,81 @@ export function RoomPage() {
             }
         },
         [snapshot]
+    );
+
+    const handleRemovePlayer = useCallback(
+        async (player: RoomPlayer) => {
+            if (!roomId || player.is_host) {
+                return;
+            }
+            setRemovingPlayers((state) => ({...state, [player.id]: true}));
+            setHostMessage(null);
+            setHostMessageType(null);
+            try {
+                await removeRoomPlayer(roomId, player.id);
+                setHostMessageType("info");
+                setHostMessage(`已将 ${player.name} 移出房间。`);
+            } catch (error: unknown) {
+                console.error("remove player failed", error);
+                if (isAxiosError(error)) {
+                    setHostMessage(error.response?.data?.detail ?? "移除失败");
+                } else {
+                    setHostMessage("移除失败");
+                }
+                setHostMessageType("error");
+            } finally {
+                setRemovingPlayers((state) => {
+                    const next = {...state};
+                    delete next[player.id];
+                    return next;
+                });
+            }
+        },
+        [roomId]
+    );
+
+    const handlePlayerNoteDraftChange = useCallback(
+        (playerId: string, value: string, element?: HTMLTextAreaElement | null) => {
+            setPlayerNoteDrafts((drafts) => ({...drafts, [playerId]: value}));
+            if (element) {
+                autoResizeTextArea(element);
+            } else {
+                autoResizeTextArea(playerNoteRefs.current[playerId] ?? null);
+            }
+        },
+        [autoResizeTextArea]
+    );
+
+    const handlePlayerNoteCommit = useCallback(
+        async (player: RoomPlayer) => {
+            if (!snapshot) {
+                return;
+            }
+            const draft = playerNoteDrafts[player.id] ?? "";
+            const current = playersById.get(player.id)?.note ?? "";
+            if (draft === current) {
+                return;
+            }
+            setPlayerNoteSaving((state) => ({...state, [player.id]: true}));
+            setHostMessage(null);
+            setHostMessageType(null);
+            try {
+                await updatePlayerNote(snapshot.room.id, player.id, draft);
+                setHostMessageType("info");
+                setHostMessage(`已更新 ${player.name} 的备注。`);
+            } catch (error) {
+                console.error("update note failed", error);
+                setHostMessageType("error");
+                setHostMessage("更新备注失败，请稍后重试。");
+            } finally {
+                setPlayerNoteSaving((state) => {
+                    const next = {...state};
+                    delete next[player.id];
+                    return next;
+                });
+            }
+        },
+        [snapshot, playerNoteDrafts, playersById]
     );
 
     const handleNominationSubmit = useCallback(async () => {
@@ -690,36 +898,49 @@ export function RoomPage() {
         [snapshot, voteSession, isHost, me]
     );
 
-    const handleExecutionSubmit = useCallback(async () => {
-        if (!snapshot) {
-            return;
-        }
-        const executedSeatValue = executionSeat ? Number.parseInt(executionSeat, 10) : null;
-        if (executionSeat && (executedSeatValue === null || Number.isNaN(executedSeatValue) || executedSeatValue < 0)) {
-            setHostMessageType("error");
-            setHostMessage("请选择有效的处决座位号。");
-            return;
-        }
-        setExecutionSubmitting(true);
-        setHostMessage(null);
-        setHostMessageType(null);
-        try {
-            await recordExecution(snapshot.room.id, {
-                nominationId: executionNominationId || null,
-                executedSeat: executedSeatValue
-            });
-            setHostMessageType("info");
-            setHostMessage("处决结果已记录。");
-        } catch (error) {
-            console.error("execution record failed", error);
-            setHostMessageType("error");
-            setHostMessage(
-                isAxiosError(error) ? error.response?.data?.detail ?? "记录处决失败" : "记录处决失败"
-            );
-        } finally {
-            setExecutionSubmitting(false);
-        }
-    }, [snapshot, executionSeat, executionNominationId]);
+    const handleExecutionSubmit = useCallback(
+        async (options?: {targetDead?: boolean | null}) => {
+            if (!snapshot) {
+                return;
+            }
+            const executedSeatValue = executionSeat ? Number.parseInt(executionSeat, 10) : null;
+            if (
+                executionSeat &&
+                (executedSeatValue === null || Number.isNaN(executedSeatValue) || executedSeatValue < 0)
+            ) {
+                setHostMessageType("error");
+                setHostMessage("请选择有效的处决座位号。");
+                return;
+            }
+            setExecutionSubmitting(true);
+            setHostMessage(null);
+            setHostMessageType(null);
+            try {
+                await recordExecution(snapshot.room.id, {
+                    nominationId: executionNominationId || null,
+                    executedSeat: executedSeatValue,
+                    targetDead: options?.targetDead
+                });
+                let extraMessage = "";
+                if (options?.targetDead === true) {
+                    extraMessage = "（目标标记为死亡）";
+                } else if (options?.targetDead === false) {
+                    extraMessage = "（目标标记为存活）";
+                }
+                setHostMessageType("info");
+                setHostMessage(`处决结果已记录${extraMessage}。`);
+            } catch (error) {
+                console.error("execution record failed", error);
+                setHostMessageType("error");
+                setHostMessage(
+                    isAxiosError(error) ? error.response?.data?.detail ?? "记录处决失败" : "记录处决失败"
+                );
+            } finally {
+                setExecutionSubmitting(false);
+            }
+        },
+        [snapshot, executionSeat, executionNominationId]
+    );
 
     const roleUsage = useMemo(() => {
         const counts = new Map<string, number>();
@@ -1047,6 +1268,25 @@ export function RoomPage() {
         [roomId]
     );
 
+    const handleExitRoom = useCallback(async () => {
+        if (!roomId) {
+            navigate("/");
+            return;
+        }
+        if (!isHost) {
+            if (myPlayerId) {
+                try {
+                    await removeRoomPlayer(roomId, myPlayerId);
+                } catch (error) {
+                    console.error("leave room failed", error);
+                }
+            }
+            clearAuthToken();
+        }
+        disconnectRoom();
+        navigate("/");
+    }, [roomId, isHost, myPlayerId, disconnectRoom, navigate]);
+
     if (!roomId) {
         return null;
     }
@@ -1094,15 +1334,24 @@ export function RoomPage() {
                     <div>
                         <h1 className="text-2xl font-semibold">房间 {snapshot?.room.id ?? roomId}</h1>
                         <p className="text-sm text-slate-300">当前阶段：{phaseLabel}</p>
-                        {isHost && snapshot?.room.join_code && (
+                        {snapshot?.room.join_code && (
                             <p className="text-sm text-slate-300">
                                 加入码：<span className="font-mono text-emerald-300">{snapshot.room.join_code}</span>
                             </p>
                         )}
                     </div>
-                    <div className="text-sm text-slate-300">
-                        状态：{status}
-                        {lastError && <span className="ml-2 text-rose-400">{lastError}</span>}
+                    <div className="flex items-center gap-3 text-sm text-slate-300">
+                        <span>
+                            状态：{status}
+                            {lastError && <span className="ml-2 text-rose-400">{lastError}</span>}
+                        </span>
+                        <button
+                            type="button"
+                            className="rounded border border-slate-600 px-3 py-1 text-xs text-slate-200 hover:border-rose-400"
+                            onClick={() => void handleExitRoom()}
+                        >
+                            退出房间
+                        </button>
                     </div>
                 </div>
             </header>
@@ -1162,7 +1411,7 @@ export function RoomPage() {
                         <h2 className="text-lg font-semibold">房间信息</h2>
                         <ul className="mt-3 space-y-1 text-sm text-slate-300">
                             <li>剧本：{scriptInfo?.name ?? snapshot?.room.script_id}</li>
-                            {isHost && snapshot?.room.join_code && (
+                            {snapshot?.room.join_code && (
                                 <li>
                                     加入码：
                                     <span className="font-mono text-emerald-300">{snapshot.room.join_code}</span>
@@ -1462,9 +1711,31 @@ export function RoomPage() {
                                     记录处决
                                 </button>
                             </div>
+                            <div className="mt-3 space-y-2 text-xs text-slate-400">
+                                <p>点击前请先修改玩家状态。</p>
+                                <div className="flex flex-wrap gap-2 text-sm">
+                                    <button
+                                        type="button"
+                                        className="rounded border border-rose-500 px-3 py-1 text-rose-200 hover:bg-rose-500/10 disabled:opacity-50"
+                                        onClick={() => void handleExecutionSubmit({targetDead: true})}
+                                        disabled={executionSubmitting || !hasExecutionTarget}
+                                    >
+                                        目标玩家死亡
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="rounded border border-sky-500 px-3 py-1 text-sky-200 hover:bg-sky-500/10 disabled:opacity-50"
+                                        onClick={() => void handleExecutionSubmit({targetDead: false})}
+                                        disabled={executionSubmitting || !hasExecutionTarget}
+                                    >
+                                        目标玩家未死亡
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                         <div className="mt-4 space-y-3 text-xs text-slate-300">
                             <p>当前存活玩家数：{aliveCount}</p>
+                            <p>处决门槛：{todaysExecutionThreshold}</p>
                             {selectedExecutionNomination ? (
                                 <div className="rounded border border-slate-700/60 bg-slate-900/40 p-3">
                                     <p className="text-slate-200">
@@ -1559,7 +1830,9 @@ export function RoomPage() {
                                                                 </th>
                                                             );
                                                         })}
-                                                        <th className="px-3 py-2 text-center">总票数</th>
+                                                        <th className="px-3 py-2 text-center">
+                                                            {isHost ? "总票数" : "处决台"}
+                                                        </th>
                                                     </tr>
                                                     </thead>
                                                     <tbody className="divide-y divide-slate-800 text-slate-200">
@@ -1571,6 +1844,24 @@ export function RoomPage() {
                                                                 ? "投票进行中"
                                                                 : "等待投票";
                                                         const draftValue = manualTotalDrafts[nomination.id] ?? String(nomination.manual_total ?? yesVotes);
+                                                        const blockInfo = executionBlockByDay.get(day);
+                                                        const isVoteCompleted = nomination.vote_completed;
+                                                        let blockLabel = "";
+                                                        let onBlock = false;
+                                                        if (!isVoteCompleted) {
+                                                            blockLabel = "投票未结束";
+                                                        } else if (!blockInfo || !blockInfo.hasCompleted) {
+                                                            blockLabel = "无人上处决台";
+                                                        } else if (blockInfo.nominationId === null) {
+                                                            blockLabel = blockInfo.tie
+                                                                ? "票数相同，无人上处决台"
+                                                                : "无人上处决台";
+                                                        } else if (blockInfo.nominationId === nomination.id) {
+                                                            blockLabel = "在处决台";
+                                                            onBlock = true;
+                                                        } else {
+                                                            blockLabel = "未在处决台";
+                                                        }
                                                         return (
                                                             <tr key={nomination.id}>
                                                                 <td className="px-3 py-3 align-top">
@@ -1608,24 +1899,37 @@ export function RoomPage() {
                                                                 })}
                                                                 <td className="px-3 py-2 text-center align-middle text-slate-200">
                                                                     {isHost ? (
-                                                                        <input
-                                                                            type="number"
-                                                                            className="w-20 rounded border border-slate-600 bg-slate-900 px-2 py-1 text-center text-sm focus:outline-none focus:ring focus:ring-emerald-500"
-                                                                            value={draftValue}
-                                                                            onChange={(event) =>
-                                                                                handleManualTotalInputChange(nomination.id, event.target.value)
-                                                                            }
-                                                                            onBlur={() => void handleManualTotalCommit(nomination.id)}
-                                                                            onKeyDown={(event) => {
-                                                                                if (event.key === "Enter") {
-                                                                                    event.preventDefault();
-                                                                                    void handleManualTotalCommit(nomination.id);
+                                                                        <div className="flex flex-col items-center gap-1">
+                                                                            <input
+                                                                                type="number"
+                                                                                className="w-20 rounded border border-slate-600 bg-slate-900 px-2 py-1 text-center text-sm focus:outline-none focus:ring focus:ring-emerald-500"
+                                                                                value={draftValue}
+                                                                                onChange={(event) =>
+                                                                                    handleManualTotalInputChange(nomination.id, event.target.value)
                                                                                 }
-                                                                            }}
-                                                                            disabled={manualTotalSaving[nomination.id]}
-                                                                        />
+                                                                                onBlur={() => void handleManualTotalCommit(nomination.id)}
+                                                                                onKeyDown={(event) => {
+                                                                                    if (event.key === "Enter") {
+                                                                                        event.preventDefault();
+                                                                                        void handleManualTotalCommit(nomination.id);
+                                                                                    }
+                                                                                }}
+                                                                                disabled={manualTotalSaving[nomination.id]}
+                                                                            />
+                                                                            <span className={`text-[11px] ${
+                                                                                onBlock ? "text-emerald-300" : "text-slate-400"
+                                                                            }`}>
+                                                                                {blockLabel}
+                                                                            </span>
+                                                                        </div>
                                                                     ) : (
-                                                                        <span>{nomination.manual_total ?? yesVotes}</span>
+                                                                        <span
+                                                                            className={onBlock
+                                                                                ? "font-semibold text-emerald-300"
+                                                                                : "text-slate-200"}
+                                                                        >
+                                                                            {blockLabel}
+                                                                        </span>
                                                                     )}
                                                                 </td>
                                                             </tr>
@@ -1644,6 +1948,12 @@ export function RoomPage() {
                                                             : `${execution.executed} 号`
                                                         : "无人处决"}
                                                     ，存活 {execution.alive_count}
+                                                    {execution.target_dead !== undefined && execution.target_dead !== null && (
+                                                        <>
+                                                            {" · "}
+                                                            {execution.target_dead ? "目标死亡" : "目标存活"}
+                                                        </>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>
@@ -1677,7 +1987,9 @@ export function RoomPage() {
                                         <th className="px-4 py-2 text-left">座位</th>
                                         <th className="px-4 py-2 text-left">姓名</th>
                                         <th className="px-4 py-2 text-left">状态</th>
-                                        {isHost && <th className="px-4 py-2 text-left">角色</th>}
+                                        {isHost && <th className="w-52 px-4 py-2 text-left">角色</th>}
+                                        {isHost && <th className="px-4 py-2 text-left">备注</th>}
+                                        {isHost && <th className="px-4 py-2 text-left">操作</th>}
                                     </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-800">
@@ -1795,15 +2107,15 @@ export function RoomPage() {
                                                         )}
                                                     </div>
                                                 </td>
-                                                {isHost && (
-                                                    <td className="px-4 py-2 align-top">
-                                                        {player.is_host ? (
-                                                            <div className="flex flex-wrap gap-2">
-                                                                {pendingTeamCountsLabel && (
-                                                                    <p className="w-full text-xs text-slate-400">
-                                                                        预分配阵营：{pendingTeamCountsLabel}
-                                                                    </p>
-                                                                )}
+                                                  {isHost && (
+                                                      <td className="w-52 px-4 py-2 align-top">
+                                                          {player.is_host ? (
+                                                              <div className="flex flex-wrap gap-2">
+                                                                  {pendingTeamCountsLabel && (
+                                                                      <p className="w-full text-xs text-slate-400">
+                                                                          预分配阵营：{pendingTeamCountsLabel}
+                                                                      </p>
+                                                                  )}
                                                                 <button
                                                                     type="button"
                                                                     className="rounded border border-slate-600 px-3 py-1 text-xs text-slate-200 hover:border-emerald-400 disabled:opacity-50"
@@ -1943,12 +2255,59 @@ export function RoomPage() {
                                                                     )}
                                                                 </div>
                                                             </div>
-                                                        )}
-                                                    </td>
-                                                )}
-                                            </tr>
-                                        );
-                                    })}
+                                                          )}
+                                                      </td>
+                                                  )}
+                                                  {isHost && (
+                                                      <td className="px-4 py-2 align-top">
+                                                          <div className="flex flex-col gap-2">
+                                                              <textarea
+                                                                  ref={registerPlayerNoteRef(player.id)}
+                                                                  rows={1}
+                                                                  className="w-full resize-none rounded border border-slate-600 bg-slate-900 px-2 py-1 text-sm focus:outline-none focus:ring focus:ring-emerald-500"
+                                                                  value={playerNoteDrafts[player.id] ?? ""}
+                                                                  onChange={(event) =>
+                                                                      handlePlayerNoteDraftChange(
+                                                                          player.id,
+                                                                          event.currentTarget.value,
+                                                                          event.currentTarget
+                                                                      )
+                                                                  }
+                                                                  onBlur={() => void handlePlayerNoteCommit(player)}
+                                                                  onKeyDown={(event) => {
+                                                                      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                                                                          event.preventDefault();
+                                                                          void handlePlayerNoteCommit(player);
+                                                                      }
+                                                                  }}
+                                                                  placeholder="仅主持人可见的备注"
+                                                                  disabled={playerNoteSaving[player.id]}
+                                                              />
+                                                              {playerNoteSaving[player.id] && (
+                                                                  <span className="text-xs text-slate-400">保存中...</span>
+                                                              )}
+                                                          </div>
+                                                      </td>
+                                                  )}
+                                                  {isHost && (
+                                                      <td className="px-4 py-2 align-top">
+                                                          {player.is_host ? (
+                                                              <span className="text-xs text-slate-400">-</span>
+                                                          ) : (
+                                                              <button
+                                                                  type="button"
+                                                                  className="rounded border border-rose-500 px-3 py-1 text-xs text-rose-200 hover:bg-rose-500/10 disabled:opacity-50"
+                                                                  onClick={() => void handleRemovePlayer(player)}
+                                                                  disabled={Boolean(removingPlayers[player.id])}
+                                                              >
+                                                                  {removingPlayers[player.id] ? "移除中..." : "移除"}
+                                                              </button>
+                                                          )}
+                                                      </td>
+                                                  )}
+                                              </tr>
+                                          );
+                                      })}
                                     </tbody>
                                 </table>
                             </div>
@@ -1991,22 +2350,21 @@ export function RoomPage() {
                                         className="col-span-full border-t border-slate-700 pt-3 text-sm font-semibold text-slate-200">
                                         {renderTeam(section.team) || section.team}
                                     </div>
-                                    {section.roles.map((role) => (
-                                        <div key={role.id}
-                                             className="rounded border border-slate-700 bg-slate-900/60 p-4">
-                                            <h3 className="text-base font-semibold">
-                                                {renderRole({
-                                                    id: role.id,
-                                                    name: role.name,
-                                                    name_localized: role.name_localized,
-                                                    team: role.team,
-                                                    team_label: role.team_label
-                                                })}
-                                            </h3>
-                                            <p className="text-xs text-slate-400">阵营：{renderTeam(role.team)}</p>
-                                            <p className="mt-2 text-sm text-slate-300">{role.description ?? "暂无介绍"}</p>
-                                        </div>
-                                    ))}
+                                    {section.roles.map((role) => {
+                                        const cardTone = TEAM_CARD_CLASSES[role.team ?? ""] ??
+                                            "border-slate-700 bg-slate-900/60";
+                                        return (
+                                            <div
+                                                key={role.id}
+                                                className={`rounded border p-4 ${cardTone}`}
+                                            >
+                                                <h3 className="text-base font-semibold">
+                                                    {renderRoleNameOnly(role)}
+                                                </h3>
+                                                <p className="mt-2 text-sm text-slate-300">{role.description ?? "暂无介绍"}</p>
+                                            </div>
+                                        );
+                                    })}
                                 </Fragment>
                             ))}
                             {!roleSections.length && (

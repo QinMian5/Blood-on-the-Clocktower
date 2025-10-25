@@ -7,7 +7,7 @@ def main():
     ...
     conn = sqlite3.connect('users.db')  # 替换为你的数据库文件
     cursor = conn.cursor()
-    cursor.execute("UPDATE users SET can_create_room = ? WHERE username = ?", (1, "mianqin"))
+    cursor.execute("UPDATE users SET is_admin = ? WHERE username = ?", (1, "mianqin"))
     conn.commit()
     cursor.close()
     conn.close()

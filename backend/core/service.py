@@ -13,6 +13,7 @@ from collections import Counter, defaultdict
 from datetime import datetime
 from typing import Any, Iterable
 
+from backend.core.history import GameRecordStore
 from backend.core.models import (
     ActionRecord,
     ExecutionRecord,
@@ -50,8 +51,9 @@ class AuthorizationError(RuntimeError):
 
 
 class RoomService:
-    def __init__(self) -> None:
+    def __init__(self, game_record_store: GameRecordStore | None = None) -> None:
         self._rooms: dict[str, RoomState] = {}
+        self._history_store = game_record_store
 
     # Room lifecycle -----------------------------------------------------
     def create_room(
@@ -95,6 +97,11 @@ class RoomService:
         )
         self._rooms[room_id] = room
         return room
+
+    def list_scripts(self) -> list[Script]:
+        """返回可用剧本的列表，按名称排序方便前端展示。"""
+
+        return sorted(SCRIPTS.values(), key=lambda script: script.name)
 
     def list_rooms(self) -> Iterable[RoomState]:
         return self._rooms.values()
@@ -155,16 +162,80 @@ class RoomService:
         )
         return player
 
+    def remove_player(self, room_id: str, player_id: str) -> PlayerState:
+        room = self.get_room(room_id)
+        try:
+            player = room.players[player_id]
+        except KeyError as exc:
+            raise ValueError("玩家不存在") from exc
+        if player.is_host:
+            raise ValueError("无法移除说书人")
+
+        removed = room.players.pop(player_id)
+
+        session = room.vote_session
+        if session is not None:
+            if player_id in session.votes:
+                session.votes.pop(player_id, None)
+            if player_id in session.order:
+                index = session.order.index(player_id)
+                session.order = [pid for pid in session.order if pid != player_id]
+                if session.current_index > index:
+                    session.current_index -= 1
+                elif session.current_index >= len(session.order):
+                    session.current_index = len(session.order)
+            if session.nomination_id:
+                nomination = next(
+                    (n for n in room.nominations if n.id == session.nomination_id),
+                    None,
+                )
+                if nomination is not None:
+                    self._advance_vote_session(room, nomination)
+
+        room.logs.append(
+            LogEntry(
+                id=uuid.uuid4().hex,
+                room_id=room_id,
+                ts=datetime.now(),
+                kind="player_removed",
+                payload={"seat": removed.seat, "name": removed.name},
+            )
+        )
+        return removed
+
     def _add_player(
         self, room: RoomState, name: str, *, user_id: int | None = None
     ) -> PlayerState:
+        normalized_name = name.strip() if name.strip() else name
+        if not normalized_name:
+            normalized_name = "玩家"
+
+        existing: PlayerState | None = None
+        if user_id is not None:
+            for candidate in room.players.values():
+                if candidate.user_id == user_id:
+                    existing = candidate
+                    break
+        if existing is None:
+            for candidate in room.players.values():
+                if candidate.is_host:
+                    continue
+                if candidate.user_id is None and candidate.name == normalized_name:
+                    existing = candidate
+                    break
+        if existing is not None:
+            existing.name = normalized_name
+            existing.user_id = user_id
+            existing.joined_at = datetime.utcnow()
+            existing.is_bot = False
+            return existing
+
         player_id = uuid.uuid4().hex
-        player_count = sum(1 for existing in room.players.values() if not existing.is_host)
-        seat = player_count + 1
+        seat = room.next_seat()
         player = PlayerState(
             id=player_id,
             room_id=room.id,
-            name=name,
+            name=normalized_name,
             seat=seat,
             user_id=user_id,
         )
@@ -175,7 +246,7 @@ class RoomService:
                 room_id=room.id,
                 ts=datetime.now(),
                 kind="player_joined",
-                payload={"seat": player.seat, "name": name},
+                payload={"seat": player.seat, "name": normalized_name},
             )
         )
         return player
@@ -329,6 +400,87 @@ class RoomService:
         )
         return room
 
+    def _build_game_record_payload(self, room: RoomState, result: str) -> dict[str, Any]:
+        players_payload = [
+            {
+                "id": player.id,
+                "name": player.name,
+                "seat": player.seat,
+                "is_alive": player.is_alive,
+                "life_status": player.life_status.value,
+                "role_id": player.role_id,
+                "role_attachments": [
+                    {"slot": att.slot, "index": att.index, "role_id": att.role_id}
+                    for att in player.role_attachments
+                ],
+                "note": player.note,
+                "is_host": player.is_host,
+            }
+            for player in sorted(room.players.values(), key=lambda item: item.seat)
+        ]
+        nominations_payload = [
+            {
+                "id": nomination.id,
+                "day": nomination.day,
+                "nominee_seat": nomination.nominee_seat,
+                "nominator_seat": nomination.nominator_seat,
+                "ts": nomination.ts.isoformat(),
+                "confirmed": nomination.confirmed,
+                "vote_started": nomination.vote_started,
+                "vote_completed": nomination.vote_completed,
+                "manual_vote_total": nomination.manual_vote_total,
+            }
+            for nomination in room.nominations
+        ]
+        votes_payload = [
+            {
+                "id": vote.id,
+                "nomination_id": vote.nomination_id,
+                "player_id": vote.player_id,
+                "seat": vote.voter_seat,
+                "value": vote.value,
+                "ts": vote.ts.isoformat(),
+            }
+            for vote in room.votes
+        ]
+        executions_payload = [
+            {
+                "day": record.day,
+                "nominee_seat": record.nominee_seat,
+                "executed_seat": record.executed_seat,
+                "votes_for": record.votes_for,
+                "alive_count": record.alive_count,
+                "nomination_id": record.nomination_id,
+                "target_dead": record.target_dead,
+                "ts": record.ts.isoformat(),
+            }
+            for record in room.executions
+        ]
+        logs_payload = [
+            {
+                "id": entry.id,
+                "ts": entry.ts.isoformat(),
+                "kind": entry.kind,
+                "payload": entry.payload,
+            }
+            for entry in room.logs
+        ]
+        return {
+            "room": {
+                "id": room.id,
+                "script_id": room.script_id,
+                "day": room.day,
+                "night": room.night,
+                "result": result,
+                "created_at": room.created_at.isoformat(),
+            },
+            "players": players_payload,
+            "nominations": nominations_payload,
+            "votes": votes_payload,
+            "executions": executions_payload,
+            "logs": logs_payload,
+        }
+
     def set_game_result(self, room_id: str, result: str | None) -> str | None:
         room = self.get_room(room_id)
         script = self._get_script(room.script_id)
@@ -347,6 +499,14 @@ class RoomService:
                 payload={"result": result},
             )
         )
+        if result is not None and self._history_store is not None:
+            payload = self._build_game_record_payload(room, result)
+            self._history_store.save_record(
+                room_id=room_id,
+                script_id=room.script_id,
+                result=result,
+                data=payload,
+            )
         return room.game_result
 
     def set_player_status(
@@ -382,6 +542,24 @@ class RoomService:
                 ts=datetime.now(),
                 kind="status_changed",
                 payload={"player": player.name, "status": status.value},
+            )
+        )
+        return player
+
+    def set_player_note(self, room_id: str, player_id: str, note: str) -> PlayerState:
+        room = self.get_room(room_id)
+        try:
+            player = room.players[player_id]
+        except KeyError as exc:
+            raise ValueError("找不到玩家") from exc
+        player.note = note
+        room.logs.append(
+            LogEntry(
+                id=uuid.uuid4().hex,
+                room_id=room_id,
+                ts=datetime.now(),
+                kind="player_note_updated",
+                payload={"player": player.name, "note": note},
             )
         )
         return player
@@ -949,6 +1127,8 @@ class RoomService:
         room_id: str,
         nomination_id: str | None,
         executed_seat: int | None,
+        *,
+        target_dead: bool | None = None,
     ) -> ExecutionRecord:
         room = self.get_room(room_id)
         nomination = None
@@ -971,6 +1151,7 @@ class RoomService:
             votes_for=votes_for,
             alive_count=alive_count,
             nomination_id=nomination_id,
+            target_dead=target_dead,
         )
         room.executions = [rec for rec in room.executions if rec.day != room.day]
         room.executions.append(record)
@@ -985,6 +1166,7 @@ class RoomService:
                     "executed": executed_seat,
                     "votes_for": votes_for,
                     "alive_count": alive_count,
+                    "target_dead": target_dead,
                 },
             )
         )
@@ -1031,6 +1213,8 @@ def build_snapshot(room: RoomState, principal: RoomPrincipal) -> dict[str, Any]:
         }
         entry["visible_status"] = _visible_status(player, principal, me_player)
         entry["ghost_vote_available"] = not player.ghost_vote_used
+        if principal.is_host:
+            entry["note"] = player.note
         attachments_payload: list[dict[str, Any]] = []
         base_role = role_catalog.get(player.role_id)
         if player.role_attachments:
@@ -1098,13 +1282,13 @@ def build_snapshot(room: RoomState, principal: RoomPrincipal) -> dict[str, Any]:
             "night": room.night,
             "script_id": room.script_id,
             "game_result": room.game_result,
+            "join_code": room.join_code,
         },
         "players": players_payload,
         "nominations": nominations_payload,
         "script": _script_payload(script, player_count),
     }
     if principal.is_host:
-        snapshot["room"]["join_code"] = room.join_code
         if room.pending_assignments:
             snapshot["pending_assignments"] = {
                 str(seat): _serialize_assignment(bundle, role_catalog)
@@ -1144,6 +1328,7 @@ def build_snapshot(room: RoomState, principal: RoomPrincipal) -> dict[str, Any]:
                 "votes_for": record.votes_for,
                 "alive_count": record.alive_count,
                 "nomination_id": record.nomination_id,
+                "target_dead": record.target_dead,
                 "ts": record.ts.isoformat(),
             }
             for record in sorted(room.executions, key=lambda item: item.day)
