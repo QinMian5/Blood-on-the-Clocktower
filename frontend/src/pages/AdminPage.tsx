@@ -2,6 +2,9 @@ import { FormEvent, useEffect, useState } from "react";
 
 import {
   createRegistrationCodes,
+  deleteAdminUser,
+  downloadGameDatabase,
+  downloadUserDatabase,
   fetchAdminProfile,
   fetchAdminUsers,
   fetchRegistrationCodes,
@@ -9,11 +12,11 @@ import {
   logoutAdmin,
   updateAdminUser
 } from "../api/admin";
-import type { AdminUser } from "../api/types";
+import type { AdminProfile, AdminUser } from "../api/types";
 
 export function AdminPage() {
   const [loading, setLoading] = useState(true);
-  const [admin, setAdmin] = useState<AdminUser | null>(null);
+  const [admin, setAdmin] = useState<AdminProfile | null>(null);
 
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -25,11 +28,15 @@ export function AdminPage() {
   const [usersLoading, setUsersLoading] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null);
+  const [nicknameEdits, setNicknameEdits] = useState<Record<number, string>>({});
 
   const [codes, setCodes] = useState<string[]>([]);
   const [codesLoading, setCodesLoading] = useState(false);
   const [codeCount, setCodeCount] = useState("1");
   const [codeMessage, setCodeMessage] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<"users" | "games" | null>(null);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchAdminProfile()
@@ -45,7 +52,7 @@ export function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadUsers = async (currentAdmin?: AdminUser | null, searchValue?: string) => {
+  const loadUsers = async (currentAdmin?: AdminProfile | null, searchValue?: string) => {
     if (!(currentAdmin ?? admin)) {
       return;
     }
@@ -54,10 +61,17 @@ export function AdminPage() {
     try {
       const list = await fetchAdminUsers(searchValue?.trim() || undefined);
       setUsers(list);
+      setNicknameEdits(
+        list.reduce<Record<number, string>>((accumulator, item) => {
+          accumulator[item.id] = item.nickname;
+          return accumulator;
+        }, {})
+      );
     } catch (error) {
       console.error("fetch admin users failed", error);
       setUsersError("用户列表加载失败，请稍后重试。");
       setUsers([]);
+      setNicknameEdits({});
     } finally {
       setUsersLoading(false);
     }
@@ -106,7 +120,11 @@ export function AdminPage() {
     }
     setAdmin(null);
     setUsers([]);
+    setNicknameEdits({});
     setCodes([]);
+    setExportMessage(null);
+    setExportError(null);
+    setExporting(null);
   };
 
   const handleSearchUsers = async (event: FormEvent) => {
@@ -122,9 +140,60 @@ export function AdminPage() {
         can_create_room: !user.can_create_room
       });
       setUsers((list) => list.map((item) => (item.id === updated.id ? updated : item)));
+      setNicknameEdits((draft) => ({ ...draft, [updated.id]: updated.nickname }));
     } catch (error) {
       console.error("update user failed", error);
       setUsersError("权限更新失败，请稍后重试。");
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
+  const handleNicknameChange = (userId: number, value: string) => {
+    setUsersError(null);
+    setNicknameEdits((draft) => ({ ...draft, [userId]: value }));
+  };
+
+  const handleSaveNickname = async (user: AdminUser) => {
+    const nextNickname = (nicknameEdits[user.id] ?? user.nickname).trim();
+    if (!nextNickname) {
+      setUsersError("昵称不能为空。");
+      return;
+    }
+    if (nextNickname === user.nickname) {
+      return;
+    }
+    setUpdatingUserId(user.id);
+    setUsersError(null);
+    try {
+      const updated = await updateAdminUser(user.id, { nickname: nextNickname });
+      setUsers((list) => list.map((item) => (item.id === updated.id ? updated : item)));
+      setNicknameEdits((draft) => ({ ...draft, [updated.id]: updated.nickname }));
+    } catch (error) {
+      console.error("update nickname failed", error);
+      setUsersError("昵称更新失败，请稍后重试。");
+    } finally {
+      setUpdatingUserId(null);
+    }
+  };
+
+  const handleDeleteUser = async (user: AdminUser) => {
+    if (!window.confirm(`确定删除用户 ${user.username} 吗？该操作不可恢复。`)) {
+      return;
+    }
+    setUpdatingUserId(user.id);
+    setUsersError(null);
+    try {
+      await deleteAdminUser(user.id);
+      setUsers((list) => list.filter((item) => item.id !== user.id));
+      setNicknameEdits((draft) => {
+        const next = { ...draft };
+        delete next[user.id];
+        return next;
+      });
+    } catch (error) {
+      console.error("delete user failed", error);
+      setUsersError("删除失败，请稍后重试。");
     } finally {
       setUpdatingUserId(null);
     }
@@ -151,6 +220,49 @@ export function AdminPage() {
       setCodeMessage("生成注册码失败，请稍后重试。");
     } finally {
       setCodesLoading(false);
+    }
+  };
+
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadUsers = async () => {
+    setExporting("users");
+    setExportMessage(null);
+    setExportError(null);
+    try {
+      const blob = await downloadUserDatabase();
+      triggerDownload(blob, "users.db");
+      setExportMessage("用户数据库下载已开始。");
+    } catch (error) {
+      console.error("download users db failed", error);
+      setExportError("用户数据库下载失败，请稍后重试。");
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleDownloadGames = async () => {
+    setExporting("games");
+    setExportMessage(null);
+    setExportError(null);
+    try {
+      const blob = await downloadGameDatabase();
+      triggerDownload(blob, "game_records.db");
+      setExportMessage("历史游戏数据库下载已开始。");
+    } catch (error) {
+      console.error("download game db failed", error);
+      setExportError("历史游戏数据库下载失败，请稍后重试。");
+    } finally {
+      setExporting(null);
     }
   };
 
@@ -257,40 +369,75 @@ export function AdminPage() {
                   <th className="px-3 py-2">昵称</th>
                   <th className="px-3 py-2">可创建房间</th>
                   <th className="px-3 py-2">创建时间</th>
+                  <th className="px-3 py-2">操作</th>
                 </tr>
               </thead>
               <tbody>
-                {users.map((user) => (
-                  <tr key={user.id} className="border-b border-slate-800/60">
-                    <td className="px-3 py-2 font-mono text-xs sm:text-sm">{user.username}</td>
-                    <td className="px-3 py-2 text-xs sm:text-sm">{user.nickname}</td>
-                    <td className="px-3 py-2">
-                      <label className="inline-flex items-center gap-2 text-xs sm:text-sm">
-                        <input
-                          type="checkbox"
-                          checked={user.can_create_room}
-                          disabled={updatingUserId === user.id}
-                          onChange={() => void handleToggleCreateRoom(user)}
-                          className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-rose-500 focus:ring-rose-500"
-                        />
-                        <span>{user.can_create_room ? "允许" : "禁止"}</span>
-                      </label>
-                    </td>
-                    <td className="px-3 py-2 text-xs text-slate-400 sm:text-sm">
-                      {new Date(user.created_at).toLocaleString()}
-                    </td>
-                  </tr>
-                ))}
+                {users.map((user) => {
+                  const nicknameValue = nicknameEdits[user.id] ?? user.nickname;
+                  const nicknameChanged = nicknameValue.trim() !== user.nickname;
+                  const busy = updatingUserId === user.id;
+                  return (
+                    <tr key={user.id} className="border-b border-slate-800/60">
+                      <td className="px-3 py-2 font-mono text-xs sm:text-sm">{user.username}</td>
+                      <td className="px-3 py-2 text-xs sm:text-sm">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <input
+                            type="text"
+                            className="w-full min-w-[8rem] rounded border border-slate-600 bg-slate-900 px-2 py-1 text-xs sm:text-sm focus:border-rose-400 focus:outline-none"
+                            value={nicknameValue}
+                            onChange={(event) => handleNicknameChange(user.id, event.target.value)}
+                            maxLength={64}
+                            disabled={busy}
+                          />
+                          <button
+                            type="button"
+                            className="rounded border border-slate-600 px-3 py-1 text-xs text-slate-200 hover:border-rose-400 disabled:opacity-50"
+                            onClick={() => void handleSaveNickname(user)}
+                            disabled={busy || !nicknameChanged}
+                          >
+                            保存
+                          </button>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <label className="inline-flex items-center gap-2 text-xs sm:text-sm">
+                          <input
+                            type="checkbox"
+                            checked={user.can_create_room}
+                            disabled={busy}
+                            onChange={() => void handleToggleCreateRoom(user)}
+                            className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-rose-500 focus:ring-rose-500"
+                          />
+                          <span>{user.can_create_room ? "允许" : "禁止"}</span>
+                        </label>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-slate-400 sm:text-sm">
+                        {new Date(user.created_at).toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2">
+                        <button
+                          type="button"
+                          className="rounded border border-rose-500 px-3 py-1 text-xs text-rose-300 hover:border-rose-400 disabled:opacity-50"
+                          onClick={() => void handleDeleteUser(user)}
+                          disabled={busy}
+                        >
+                          删除
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {!users.length && !usersLoading && (
                   <tr>
-                    <td className="px-3 py-6 text-center text-sm text-slate-400" colSpan={4}>
+                    <td className="px-3 py-6 text-center text-sm text-slate-400" colSpan={5}>
                       暂无数据，请尝试搜索其他用户名。
                     </td>
                   </tr>
                 )}
                 {usersLoading && (
                   <tr>
-                    <td className="px-3 py-6 text-center text-sm text-slate-400" colSpan={4}>
+                    <td className="px-3 py-6 text-center text-sm text-slate-400" colSpan={5}>
                       正在加载…
                     </td>
                   </tr>
@@ -347,6 +494,31 @@ export function AdminPage() {
               </ul>
             )}
           </div>
+        </section>
+
+        <section className="rounded-xl border border-slate-700 bg-slate-800/60 p-5">
+          <h2 className="text-lg font-semibold">数据导出</h2>
+          <p className="mt-2 text-sm text-slate-300">下载当前用户数据库或历史游戏数据库备份。</p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="rounded border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-rose-400 disabled:opacity-50"
+              onClick={() => void handleDownloadUsers()}
+              disabled={exporting !== null}
+            >
+              {exporting === "users" ? "下载中…" : "下载用户数据库"}
+            </button>
+            <button
+              type="button"
+              className="rounded border border-slate-600 px-4 py-2 text-sm text-slate-200 hover:border-rose-400 disabled:opacity-50"
+              onClick={() => void handleDownloadGames()}
+              disabled={exporting !== null}
+            >
+              {exporting === "games" ? "下载中…" : "下载历史游戏数据库"}
+            </button>
+          </div>
+          {exportMessage && <p className="mt-3 text-sm text-emerald-300">{exportMessage}</p>}
+          {exportError && <p className="mt-3 text-sm text-rose-300">{exportError}</p>}
         </section>
       </main>
     </div>

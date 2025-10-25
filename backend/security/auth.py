@@ -10,6 +10,7 @@ from fastapi import Cookie, Depends, HTTPException, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from backend.core.config import get_settings
+from backend.core.admin_accounts import AdminAccount, AdminAccountStore
 from backend.core.service import RoomPrincipal, RoomService
 from backend.core.users import User, UserStore
 
@@ -86,8 +87,9 @@ class AuthenticatedUser:
         self.user = user
 
 
-class AuthenticatedAdmin(AuthenticatedUser):
-    pass
+class AuthenticatedAdmin:
+    def __init__(self, account: AdminAccount) -> None:
+        self.account = account
 
 
 def create_user_session_token(user_id: int) -> str:
@@ -123,8 +125,15 @@ def set_session_cookie(response: Response, token: str, *, clear: bool = False) -
     )
 
 
-def create_admin_session_token(user_id: int) -> str:
-    return create_user_session_token(user_id)
+def create_admin_session_token(username: str) -> str:
+    settings = get_settings()
+    now = datetime.now(tz=timezone.utc)
+    payload: dict[str, Any] = {
+        "admin_username": username,
+        "exp": now + timedelta(days=USER_TOKEN_TTL_DAYS),
+        "iat": now,
+    }
+    return jwt.encode(payload, settings.app_secret, algorithm="HS256")
 
 
 def set_admin_session_cookie(response: Response, token: str, *, clear: bool = False) -> None:
@@ -174,13 +183,22 @@ def optional_user_dependency(user_store: UserStore) -> Callable[[str | None], Au
     return _dependency
 
 
-def admin_dependency(user_store: UserStore) -> Callable[[str | None], AuthenticatedAdmin]:
+def _admin_from_token(admin_store: AdminAccountStore, token: str) -> AuthenticatedAdmin:
+    data = decode_user_session_token(token)
+    username = data.get("admin_username")
+    if not username:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录状态失效")
+    try:
+        account = admin_store.get_account(str(username))
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录状态失效") from exc
+    return AuthenticatedAdmin(account)
+
+
+def admin_dependency(admin_store: AdminAccountStore) -> Callable[[str | None], AuthenticatedAdmin]:
     async def _dependency(session: str | None = Cookie(default=None, alias=ADMIN_SESSION_COOKIE_NAME)) -> AuthenticatedAdmin:
         if not session:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="需要管理员登录")
-        user = _user_from_token(user_store, session)
-        if not user.user.is_admin:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="缺少管理员权限")
-        return AuthenticatedAdmin(user.user)
+        return _admin_from_token(admin_store, session)
 
     return _dependency

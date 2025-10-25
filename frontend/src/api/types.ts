@@ -136,11 +136,14 @@ export interface RoomCredentials {
   playerId?: string | null;
 }
 
+export interface AdminProfile {
+  username: string;
+}
+
 export interface AdminUser {
   id: number;
   username: string;
   nickname: string;
   can_create_room: boolean;
-  is_admin: boolean;
   created_at: string;
 }

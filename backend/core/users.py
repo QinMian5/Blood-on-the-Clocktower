@@ -160,18 +160,18 @@ class UserStore:
         user_id: int,
         *,
         can_create_room: bool | None = None,
-        is_admin: bool | None = None,
+        nickname: str | None = None,
     ) -> User:
-        if can_create_room is None and is_admin is None:
+        if can_create_room is None and nickname is None:
             return self.get_user_by_id(user_id)
         updates: list[str] = []
         params: list[object] = []
         if can_create_room is not None:
             updates.append("can_create_room = ?")
             params.append(int(can_create_room))
-        if is_admin is not None:
-            updates.append("is_admin = ?")
-            params.append(int(is_admin))
+        if nickname is not None:
+            updates.append("nickname = ?")
+            params.append(nickname)
         params.append(user_id)
         with self._connect() as conn:
             cursor = conn.execute(
@@ -181,3 +181,13 @@ class UserStore:
             if cursor.rowcount == 0:
                 raise ValueError("用户不存在")
         return self.get_user_by_id(user_id)
+
+    def delete_user(self, user_id: int) -> None:
+        with self._connect() as conn:
+            cursor = conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+            if cursor.rowcount == 0:
+                raise ValueError("用户不存在")
+
+    @property
+    def db_path(self) -> Path:
+        return self._db_path

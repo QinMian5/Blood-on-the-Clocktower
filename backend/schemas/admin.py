@@ -8,26 +8,37 @@ class AdminLoginRequest(BaseModel):
     password: str = Field(..., min_length=1, max_length=128)
 
 
+class AdminAccountResponse(BaseModel):
+    username: str
+
+
 class AdminUserResponse(BaseModel):
     id: int
     username: str
     nickname: str
     can_create_room: bool
-    is_admin: bool
     created_at: datetime
 
 
 class AdminLoginResponse(BaseModel):
-    admin: AdminUserResponse
+    admin: AdminAccountResponse
 
 
 class AdminLogoutResponse(BaseModel):
     success: bool = True
 
 
-class UpdateUserPermissionsRequest(BaseModel):
+class AdminProfileResponse(AdminAccountResponse):
+    pass
+
+
+class UpdateUserRequest(BaseModel):
     can_create_room: bool | None = None
-    is_admin: bool | None = None
+    nickname: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class DeleteUserResponse(BaseModel):
+    success: bool = True
 
 
 class RegistrationCodeCreateRequest(BaseModel):

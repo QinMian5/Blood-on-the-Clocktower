@@ -78,3 +78,7 @@ class GameRecordStore:
                 )
             )
         return records
+
+    @property
+    def db_path(self) -> Path:
+        return self._db_path

@@ -12,6 +12,7 @@ class Settings:
     registration_codes_path: str = os.getenv(
         "REGISTRATION_CODES_PATH", "./backend/data/registration_codes.txt"
     )
+    admin_secrets_path: str = os.getenv("ADMIN_SECRETS_PATH", "/etc/secrets/admin")
     cors_origins: list[str]
 
     def __init__(self) -> None:
