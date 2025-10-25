@@ -1,0 +1,223 @@
+openapi: 3.1.0
+info:
+  title: Blood on the Clocktower Assistant API
+  version: 0.1.0
+servers:
+  - url: http://localhost:8000
+paths:
+  /api/rooms:
+    post:
+      summary: Create room
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoomRequest'
+      responses:
+        '200':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRoomResponse'
+  /api/rooms/join:
+    post:
+      summary: Join room by code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JoinRoomRequest'
+      responses:
+        '200':
+          description: Joined
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JoinRoomResponse'
+  /api/rooms/{room_id}/seat:
+    post:
+      summary: Update seat
+      parameters:
+        - in: path
+          name: room_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSeatRequest'
+      responses:
+        '200':
+          description: Seat updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  seat:
+                    type: integer
+                required:
+                  - seat
+  /api/rooms/{room_id}/reset:
+    post:
+      summary: Reset room to lobby
+      parameters:
+        - in: path
+          name: room_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Reset acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                required:
+                  - status
+  /api/rooms/{room_id}/result:
+    post:
+      summary: Set game result
+      parameters:
+        - in: path
+          name: room_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GameResultRequest'
+      responses:
+        '200':
+          description: Result stored
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  result:
+                    type: string
+                    nullable: true
+                required:
+                  - result
+  /api/rooms/{room_id}/nominations/{nomination_id}/total:
+    post:
+      summary: Update manual vote total
+      parameters:
+        - in: path
+          name: room_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: nomination_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NominationTotalRequest'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                required:
+                  - status
+components:
+  schemas:
+    CreateRoomRequest:
+      type: object
+      properties:
+        host_name:
+          type: string
+        script_id:
+          type: string
+    CreateRoomResponse:
+      type: object
+      properties:
+        room_id:
+          type: string
+        join_code:
+          type: string
+        room_code:
+          type: string
+        host_token:
+          type: string
+      required:
+        - room_id
+        - join_code
+        - room_code
+        - host_token
+    JoinRoomRequest:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+      required:
+        - code
+    JoinRoomResponse:
+      type: object
+      properties:
+        room_id:
+          type: string
+        player_id:
+          type: string
+        seat:
+          type: integer
+        player_token:
+          type: string
+      required:
+        - room_id
+        - player_id
+        - seat
+        - player_token
+    UpdateSeatRequest:
+      type: object
+      properties:
+        seat:
+          type: integer
+          minimum: 0
+        player_id:
+          type: string
+      required:
+        - seat
+    GameResultRequest:
+      type: object
+      properties:
+        result:
+          type: string
+          nullable: true
+          description: 'blue, red, storyteller or null'
+      required:
+        - result
+    NominationTotalRequest:
+      type: object
+      properties:
+        total:
+          type: integer
+          nullable: true
+          description: 主持人手动录入的总得票数，null 表示还原为系统统计值
