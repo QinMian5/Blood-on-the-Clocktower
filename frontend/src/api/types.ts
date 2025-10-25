@@ -135,3 +135,12 @@ export interface RoomCredentials {
   seat?: number | null;
   playerId?: string | null;
 }
+
+export interface AdminUser {
+  id: number;
+  username: string;
+  nickname: string;
+  can_create_room: boolean;
+  is_admin: boolean;
+  created_at: string;
+}

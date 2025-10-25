@@ -144,6 +144,11 @@ function renderTeam(team?: string) {
     return TEAM_LABEL[team] ?? team;
 }
 
+function renderRoleNameOnly(role: { name: string; name_localized?: Record<string, string> | null | undefined }) {
+    const zhName = role.name_localized?.zh_CN ?? role.name_localized?.zh_cn;
+    return zhName ?? role.name;
+}
+
 function computeExecutionThreshold(alivePlayers: number) {
     return Math.floor(alivePlayers / 2) + 1;
 }
@@ -1329,7 +1334,7 @@ export function RoomPage() {
                     <div>
                         <h1 className="text-2xl font-semibold">房间 {snapshot?.room.id ?? roomId}</h1>
                         <p className="text-sm text-slate-300">当前阶段：{phaseLabel}</p>
-                        {isHost && snapshot?.room.join_code && (
+                        {snapshot?.room.join_code && (
                             <p className="text-sm text-slate-300">
                                 加入码：<span className="font-mono text-emerald-300">{snapshot.room.join_code}</span>
                             </p>
@@ -1406,7 +1411,7 @@ export function RoomPage() {
                         <h2 className="text-lg font-semibold">房间信息</h2>
                         <ul className="mt-3 space-y-1 text-sm text-slate-300">
                             <li>剧本：{scriptInfo?.name ?? snapshot?.room.script_id}</li>
-                            {isHost && snapshot?.room.join_code && (
+                            {snapshot?.room.join_code && (
                                 <li>
                                     加入码：
                                     <span className="font-mono text-emerald-300">{snapshot.room.join_code}</span>
@@ -2354,15 +2359,8 @@ export function RoomPage() {
                                                 className={`rounded border p-4 ${cardTone}`}
                                             >
                                                 <h3 className="text-base font-semibold">
-                                                    {renderRole({
-                                                        id: role.id,
-                                                        name: role.name,
-                                                        name_localized: role.name_localized,
-                                                        team: role.team,
-                                                        team_label: role.team_label
-                                                    })}
+                                                    {renderRoleNameOnly(role)}
                                                 </h3>
-                                                <p className="text-xs text-slate-400">阵营：{renderTeam(role.team)}</p>
                                                 <p className="mt-2 text-sm text-slate-300">{role.description ?? "暂无介绍"}</p>
                                             </div>
                                         );

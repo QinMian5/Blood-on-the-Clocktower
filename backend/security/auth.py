@@ -17,6 +17,7 @@ from backend.core.users import User, UserStore
 TOKEN_TTL_MINUTES = 8 * 60
 USER_TOKEN_TTL_DAYS = 7
 SESSION_COOKIE_NAME = "botc_session"
+ADMIN_SESSION_COOKIE_NAME = "botc_admin_session"
 
 
 def create_token(room_id: str, *, player_id: str | None, seat: int | None, role: str) -> str:
@@ -85,6 +86,10 @@ class AuthenticatedUser:
         self.user = user
 
 
+class AuthenticatedAdmin(AuthenticatedUser):
+    pass
+
+
 def create_user_session_token(user_id: int) -> str:
     settings = get_settings()
     now = datetime.now(tz=timezone.utc)
@@ -110,6 +115,24 @@ def set_session_cookie(response: Response, token: str, *, clear: bool = False) -
         return
     response.set_cookie(
         SESSION_COOKIE_NAME,
+        token,
+        max_age=USER_TOKEN_TTL_DAYS * 24 * 60 * 60,
+        httponly=True,
+        samesite="lax",
+        path="/",
+    )
+
+
+def create_admin_session_token(user_id: int) -> str:
+    return create_user_session_token(user_id)
+
+
+def set_admin_session_cookie(response: Response, token: str, *, clear: bool = False) -> None:
+    if clear:
+        response.delete_cookie(ADMIN_SESSION_COOKIE_NAME, path="/")
+        return
+    response.set_cookie(
+        ADMIN_SESSION_COOKIE_NAME,
         token,
         max_age=USER_TOKEN_TTL_DAYS * 24 * 60 * 60,
         httponly=True,
@@ -147,5 +170,17 @@ def optional_user_dependency(user_store: UserStore) -> Callable[[str | None], Au
             return _user_from_token(user_store, session)
         except HTTPException:
             return None
+
+    return _dependency
+
+
+def admin_dependency(user_store: UserStore) -> Callable[[str | None], AuthenticatedAdmin]:
+    async def _dependency(session: str | None = Cookie(default=None, alias=ADMIN_SESSION_COOKIE_NAME)) -> AuthenticatedAdmin:
+        if not session:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="需要管理员登录")
+        user = _user_from_token(user_store, session)
+        if not user.user.is_admin:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="缺少管理员权限")
+        return AuthenticatedAdmin(user.user)
 
     return _dependency

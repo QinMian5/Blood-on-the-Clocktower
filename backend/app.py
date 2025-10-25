@@ -8,6 +8,7 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from backend.api.admin import create_admin_router
 from backend.api.auth import create_auth_router
 from backend.api.rooms import create_rooms_router
 from backend.core.config import get_settings
@@ -37,6 +38,7 @@ if settings.cors_origins:
     )
 
 app.include_router(create_auth_router(user_store, code_store))
+app.include_router(create_admin_router(user_store, code_store))
 app.include_router(create_rooms_router(room_service, ws_manager, user_store))
 
 

@@ -1282,13 +1282,13 @@ def build_snapshot(room: RoomState, principal: RoomPrincipal) -> dict[str, Any]:
             "night": room.night,
             "script_id": room.script_id,
             "game_result": room.game_result,
+            "join_code": room.join_code,
         },
         "players": players_payload,
         "nominations": nominations_payload,
         "script": _script_payload(script, player_count),
     }
     if principal.is_host:
-        snapshot["room"]["join_code"] = room.join_code
         if room.pending_assignments:
             snapshot["pending_assignments"] = {
                 str(seat): _serialize_assignment(bundle, role_catalog)

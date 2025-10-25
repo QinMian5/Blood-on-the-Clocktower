@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { loginUser, logoutUser, registerUser, fetchCurrentUser } from "../api/auth";
 import { createRoom, fetchScripts, fetchSnapshot, joinRoom } from "../api/rooms";
@@ -450,6 +450,11 @@ export function JoinPage() {
             </div>
           </section>
         )}
+      </div>
+      <div className="px-6 py-6 text-center text-xs text-slate-400">
+        <Link to="/admin" className="text-emerald-400 hover:text-emerald-300">
+          管理员后台
+        </Link>
       </div>
     </div>
   );

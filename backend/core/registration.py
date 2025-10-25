@@ -41,6 +41,30 @@ class RegistrationCodeStore:
                 codes.sort()
                 self._save_codes(codes)
 
+    def list_codes(self) -> list[str]:
+        with self._lock:
+            return list(self._load_codes())
+
+    def add_codes(self, codes: list[str]) -> list[str]:
+        if not codes:
+            return []
+        normalized = [code.strip() for code in codes if code and code.strip()]
+        if not normalized:
+            return []
+        with self._lock:
+            existing = self._load_codes()
+            existing_set = set(existing)
+            added: list[str] = []
+            for code in normalized:
+                if code in existing_set:
+                    continue
+                existing.append(code)
+                existing_set.add(code)
+                added.append(code)
+            if added:
+                self._save_codes(existing)
+            return added
+
     def _load_codes(self) -> list[str]:
         data = self._file_path.read_text(encoding="utf-8")
         codes = [
