@@ -70,7 +70,7 @@ class RoomService:
             join_code=join_code,
             script_id=script.id,
             phase=Phase.LOBBY,
-            created_at=datetime.utcnow(),
+            created_at=datetime.now(),
             host_player_id=host_player_id,
         )
 
@@ -88,7 +88,7 @@ class RoomService:
             LogEntry(
                 id=uuid.uuid4().hex,
                 room_id=room_id,
-                ts=datetime.utcnow(),
+                ts=datetime.now(),
                 kind="room_created",
                 payload={"script_id": script.id, "host_name": host_name},
             )
@@ -148,7 +148,7 @@ class RoomService:
             LogEntry(
                 id=uuid.uuid4().hex,
                 room_id=room_id,
-                ts=datetime.utcnow(),
+                ts=datetime.now(),
                 kind="seat_changed",
                 payload={"player": player.name, "seat": seat},
             )
@@ -173,7 +173,7 @@ class RoomService:
             LogEntry(
                 id=uuid.uuid4().hex,
                 room_id=room.id,
-                ts=datetime.utcnow(),
+                ts=datetime.now(),
                 kind="player_joined",
                 payload={"seat": player.seat, "name": name},
             )
@@ -218,7 +218,7 @@ class RoomService:
                 LogEntry(
                     id=uuid.uuid4().hex,
                     room_id=room_id,
-                    ts=datetime.utcnow(),
+                    ts=datetime.now(),
                     kind="roles_assigned",
                     payload={
                         "seed": room.assignments_seed,
@@ -267,36 +267,30 @@ class RoomService:
             self._ensure_seating_ready(room)
 
         previous = room.phase
-        room.phase = to_phase
         if to_phase != Phase.VOTE:
             room.vote_session = None
         if to_phase == Phase.NIGHT:
             # 首个夜晚记为第 0 夜，之后每次夜晚循环递增。
             if previous == Phase.LOBBY:
-                room.night = 0
-            else:
-                room.night += 1
+                room.day = 0
+                # room.night = 0
+            elif previous == Phase.DAY:
+                room.day -= 1
         elif to_phase == Phase.DAY:
             if previous == Phase.NIGHT:
-                if room.night <= 0:
-                    room.day = max(room.day, 1)
-                else:
-                    room.day += 1
-            else:
-                room.day = max(room.day, 1)
-        elif to_phase in (Phase.VOTE, Phase.RESOLVE):
-            room.day = max(room.day, 1)
-        elif to_phase == Phase.DAY_END:
-            room.day += 1
+                room.day += 1
         elif to_phase == Phase.LOBBY:
-            room.day = 1
-            room.night = 0
+            room.day = 0
+            # room.night = 0
+        if previous == Phase.NIGHT and room.day == 0 and to_phase == Phase.RESOLVE:
+            to_phase = Phase.LOBBY
+        room.phase = to_phase
 
         room.logs.append(
             LogEntry(
                 id=uuid.uuid4().hex,
                 room_id=room_id,
-                ts=datetime.utcnow(),
+                ts=datetime.now(),
                 kind="phase_changed",
                 payload={"to": to_phase.value, "day": room.day, "night": room.night},
             )
@@ -328,7 +322,7 @@ class RoomService:
             LogEntry(
                 id=uuid.uuid4().hex,
                 room_id=room_id,
-                ts=datetime.utcnow(),
+                ts=datetime.now(),
                 kind="game_reset",
                 payload={},
             )
@@ -348,7 +342,7 @@ class RoomService:
             LogEntry(
                 id=uuid.uuid4().hex,
                 room_id=room_id,
-                ts=datetime.utcnow(),
+                ts=datetime.now(),
                 kind="game_result_set",
                 payload={"result": result},
             )
@@ -385,7 +379,7 @@ class RoomService:
             LogEntry(
                 id=uuid.uuid4().hex,
                 room_id=room_id,
-                ts=datetime.utcnow(),
+                ts=datetime.now(),
                 kind="status_changed",
                 payload={"player": player.name, "status": status.value},
             )
@@ -419,7 +413,7 @@ class RoomService:
             LogEntry(
                 id=uuid.uuid4().hex,
                 room_id=room_id,
-                ts=datetime.utcnow(),
+                ts=datetime.now(),
                 kind="nominated",
                 payload={"nominee": nominee_seat, "by": nominator_seat},
             )
@@ -448,7 +442,7 @@ class RoomService:
             LogEntry(
                 id=uuid.uuid4().hex,
                 room_id=room_id,
-                ts=datetime.utcnow(),
+                ts=datetime.now(),
                 kind="vote_started",
                 payload={"nomination_id": nomination_id},
             )
@@ -472,7 +466,7 @@ class RoomService:
             LogEntry(
                 id=uuid.uuid4().hex,
                 room_id=room_id,
-                ts=datetime.utcnow(),
+                ts=datetime.now(),
                 kind="nomination_reverted",
                 payload={"nomination_id": nomination_id},
             )
@@ -489,7 +483,7 @@ class RoomService:
             LogEntry(
                 id=uuid.uuid4().hex,
                 room_id=room_id,
-                ts=datetime.utcnow(),
+                ts=datetime.now(),
                 kind="nomination_total_updated",
                 payload={"nomination_id": nomination_id, "total": total},
             )
@@ -554,7 +548,7 @@ class RoomService:
             LogEntry(
                 id=uuid.uuid4().hex,
                 room_id=room_id,
-                ts=datetime.utcnow(),
+                ts=datetime.now(),
                 kind="action_recorded",
                 payload={
                     "night": night,
@@ -904,7 +898,7 @@ class RoomService:
             LogEntry(
                 id=uuid.uuid4().hex,
                 room_id=room.id,
-                ts=datetime.utcnow(),
+                ts=datetime.now(),
                 kind="vote_cast",
                 payload={
                     "nominee": nomination.nominee_seat,
@@ -984,7 +978,7 @@ class RoomService:
             LogEntry(
                 id=uuid.uuid4().hex,
                 room_id=room_id,
-                ts=datetime.utcnow(),
+                ts=datetime.now(),
                 kind="execution_recorded",
                 payload={
                     "nomination_id": nomination_id,

@@ -57,7 +57,7 @@ function describePhase(phase: string, day: number, night: number) {
         case "lobby":
             return "大厅";
         case "night":
-            return `第${night}天夜晚`;
+            return `第${day}天夜晚`;
         case "day":
             return `第${day}天白天`;
         case "vote":
@@ -975,7 +975,7 @@ export function RoomPage() {
         setHostMessageType(null);
         try {
             await changePhase(roomId, phase);
-            setHostMessage(`阶段已切换为 ${phase}`);
+            setHostMessage(`阶段已切换`);
             setHostMessageType("info");
         } catch (error: unknown) {
             console.error("phase change failed", error);

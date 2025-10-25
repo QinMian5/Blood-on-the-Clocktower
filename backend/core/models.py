@@ -106,7 +106,7 @@ class RoomState:
     phase: Phase
     created_at: datetime
     host_player_id: str
-    day: int = 1
+    day: int = 0
     night: int = 0
     assignments_seed: str | None = None
     players: dict[str, PlayerState] = field(default_factory=dict)
