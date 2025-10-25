@@ -108,4 +108,4 @@ SCRIPTS = {
         "tie_rule": "no_execution_on_tie",
         "storyteller_win_available": False,
     }),
-    }
+}
