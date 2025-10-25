@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from backend.core.models import ScriptRole
 
-
 ROLES: dict[str, ScriptRole] = {
     """暗流涌动角色"""
     "washerwoman": ScriptRole(
@@ -25,7 +24,8 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["first-night", "info"],
         name_localized={"zh_CN": "图书管理员"},
-        meta={"description": "在第一个夜晚，你会得知两名玩家和一个外来者角色：这两名玩家之一是该角色。（或者你会得知没有外来者在场）"},
+        meta={
+            "description": "在第一个夜晚，你会得知两名玩家和一个外来者角色：这两名玩家之一是该角色。（或者你会得知没有外来者在场）"},
     ),
     "investigator": ScriptRole(
         id="investigator",
@@ -33,7 +33,8 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["first-night", "info"],
         name_localized={"zh_CN": "调查员"},
-        meta={"description": "在第一个夜晚，你会得知两名玩家和一个爪牙角色：这两名玩家之一是该角色。（或者你会得知没有爪牙在场）"},
+        meta={
+            "description": "在第一个夜晚，你会得知两名玩家和一个爪牙角色：这两名玩家之一是该角色。（或者你会得知没有爪牙在场）"},
     ),
     "chef": ScriptRole(
         id="chef",
@@ -57,7 +58,8 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["nightly", "info"],
         name_localized={"zh_CN": "占卜师"},
-        meta={"description": "每个夜晚，你要选择两名玩家：你会得知他们之中是否有恶魔。场上会有一名善良玩家始终被你的能力当作恶魔（干扰项）。“},
+        meta={
+            "description": "每个夜晚，你要选择两名玩家：你会得知他们之中是否有恶魔。场上会有一名善良玩家始终被你的能力当作恶魔（干扰项）。"},
     ),
     "undertaker": ScriptRole(
         id="undertaker",
@@ -113,7 +115,8 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["endgame"],
         name_localized={"zh_CN": "市长"},
-        meta={"description": "如果只有三名玩家存活且白天没有人被处决，你的阵营获胜。如果你在夜晚即将死亡，可能会有一名其他玩家代替你死亡。"},
+        meta={
+            "description": "如果只有三名玩家存活且白天没有人被处决，你的阵营获胜。如果你在夜晚即将死亡，可能会有一名其他玩家代替你死亡。"},
     ),
     "butler": ScriptRole(
         id="butler",
@@ -242,7 +245,8 @@ ROLES: dict[str, ScriptRole] = {
         team="townsfolk",
         tags=["nightly", "attack"],
         name_localized={"zh_CN": "驱魔人"},
-        meta={"description": "每个夜晚*，你选择一名玩家（与上个夜晚不同）：若他是恶魔，他会得知你是驱魔人，但当晚不会被唤醒。"},
+        meta={
+            "description": "每个夜晚*，你选择一名玩家（与上个夜晚不同）：若他是恶魔，他会得知你是驱魔人，但当晚不会被唤醒。"},
     ),
     "innkeeper": ScriptRole(
         id="innkeeper",
@@ -354,7 +358,8 @@ ROLES: dict[str, ScriptRole] = {
         team="minion",
         tags=["first-night", "nightly", "attack"],
         name_localized={"zh_CN": "教父"},
-        meta={"description": "在你的首个夜晚，你会得知有哪些外来者在场。若外来者在白天死亡，你在当晚选择一名玩家使其死亡。"},
+        meta={
+            "description": "在你的首个夜晚，你会得知有哪些外来者在场。若外来者在白天死亡，你在当晚选择一名玩家使其死亡。"},
     ),
     "devils_advocate": ScriptRole(
         id="devils_advocate",
@@ -378,7 +383,8 @@ ROLES: dict[str, ScriptRole] = {
         team="minion",
         tags=["reaction", "endgame"],
         name_localized={"zh_CN": "主谋"},
-        meta={"description": "若恶魔因处决而导致游戏结束，再额外进行一个夜晚和白天。若新的一天善良玩家被处决，则邪恶阵营获胜。"},
+        meta={
+            "description": "若恶魔因处决而导致游戏结束，再额外进行一个夜晚和白天。若新的一天善良玩家被处决，则邪恶阵营获胜。"},
     ),
 
     "zombuul": ScriptRole(
@@ -388,7 +394,7 @@ ROLES: dict[str, ScriptRole] = {
         tags=["nightly", "attack"],
         name_localized={"zh_CN": "僵怖"},
         meta={
-            "description": "每个夜晚*，若今天白天无人死亡，你选择一名玩家使其死亡。你首次死亡后仍被当作死亡但仍存活。"},
+            "description": "每个夜晚*，若今天白天无人死亡，你选择一名玩家使其死亡。你首次死亡后仍被当作死亡但仍存活。",
             "attachment_slots": [
                 {
                     "id": "demon_bluff",
@@ -400,6 +406,7 @@ ROLES: dict[str, ScriptRole] = {
             ],
         },
     ),
+
     "pukka": ScriptRole(
         id="pukka",
         name="Pukka",
@@ -407,7 +414,7 @@ ROLES: dict[str, ScriptRole] = {
         tags=["nightly", "poison", "attack"],
         name_localized={"zh_CN": "普卡"},
         meta={
-            "description": "每个夜晚，你选择一名玩家使其中毒。上次中毒的玩家会死亡并恢复健康。"},
+            "description": "每个夜晚，你选择一名玩家使其中毒。上次中毒的玩家会死亡并恢复健康。",
             "attachment_slots": [
                 {
                     "id": "demon_bluff",
@@ -426,7 +433,7 @@ ROLES: dict[str, ScriptRole] = {
         tags=["nightly", "attack", "revive"],
         name_localized={"zh_CN": "沙巴洛斯"},
         meta={
-            "description": "每个夜晚*，你选择两名玩家使其死亡。你上次选择的死亡玩家之一可能会被你复活。"},
+            "description": "每个夜晚*，你选择两名玩家使其死亡。你上次选择的死亡玩家之一可能会被你复活。",
             "attachment_slots": [
                 {
                     "id": "demon_bluff",
@@ -445,7 +452,7 @@ ROLES: dict[str, ScriptRole] = {
         tags=["nightly", "attack"],
         name_localized={"zh_CN": "珀"},
         meta={
-            "description": "每个夜晚*，你可以选择不杀人。若如此，下一个夜晚你必须杀死三名玩家。"},
+            "description": "每个夜晚*，你可以选择不杀人。若如此，下一个夜晚你必须杀死三名玩家。",
             "attachment_slots": [
                 {
                     "id": "demon_bluff",
